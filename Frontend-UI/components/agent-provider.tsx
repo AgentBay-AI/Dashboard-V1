@@ -7,6 +7,7 @@ export interface Organization {
   name: string
   industry: string
   createdAt: string
+  description?: string
 }
 
 export interface Agent {
@@ -16,10 +17,15 @@ export interface Agent {
   organizationId: string
   provider: string
   framework: string
+  model: string
   status: "active" | "inactive" | "error"
   lastSync: string
   models: string[]
   apiKey: string
+  agentType: "custom" | "nocode"
+  createdAt: string
+  endpoint?: string
+  noCodePlatform?: string
   performance?: number
   cost?: number
   requests?: number
@@ -46,6 +52,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       name: "Acme Inc.",
       industry: "Technology",
       createdAt: new Date().toISOString(),
+      description: "Leading technology solutions provider",
     },
   ])
 
@@ -59,10 +66,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       organizationId: "1",
       provider: "openai",
       framework: "langchain",
+      model: "gpt-4",
       status: "active",
       lastSync: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      models: ["gpt-4o", "gpt-3.5-turbo"],
+      models: ["gpt-4", "gpt-3.5-turbo"],
       apiKey: "sk-***",
+      agentType: "custom",
+      createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
       performance: 95,
       cost: 850,
       requests: 12450,
@@ -74,10 +84,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       organizationId: "1",
       provider: "anthropic",
       framework: "custom",
+      model: "claude-3-opus",
       status: "active",
       lastSync: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
       models: ["claude-3-opus"],
       apiKey: "sk_ant-***",
+      agentType: "custom",
+      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
       performance: 88,
       cost: 400,
       requests: 5230,

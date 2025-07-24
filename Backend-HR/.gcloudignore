@@ -1,0 +1,24 @@
+# Exclude git and temp files
+.git
+.gitignore
+.gcloudignore
+.env
+.env.*
+
+# Exclude node modules (will be installed during build)
+node_modules/
+
+# Exclude development files
+*.log
+*.test.js
+*.spec.js
+coverage/
+.vscode/
+.idea/
+
+# Keep these files
+!package.json
+!package-lock.json
+!tsconfig.json
+!src/
+!dist/ 

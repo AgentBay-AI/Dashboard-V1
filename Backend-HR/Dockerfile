@@ -8,7 +8,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -31,7 +31,7 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copy built assets from builder
 COPY --from=builder --chown=nodeuser:nodejs /app/dist ./dist

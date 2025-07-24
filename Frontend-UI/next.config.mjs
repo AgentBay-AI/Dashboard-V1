@@ -1,14 +1,22 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
+  output: 'standalone',
+  experimental: {
+    serverActions: {
+      allowedOrigins: ['*']
+    }
   },
   typescript: {
-    ignoreBuildErrors: true,
+    // We'll handle type checking in CI/CD
+    ignoreBuildErrors: true
   },
-  images: {
-    unoptimized: true,
+  eslint: {
+    // We'll handle linting in CI/CD
+    ignoreDuringBuilds: true
   },
+  env: {
+    BACKEND_URL: process.env.BACKEND_URL || 'https://hr-agent-backend-1080649900100.me-central1.run.app'
+  }
 }
 
 export default nextConfig

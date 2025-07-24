@@ -11,7 +11,14 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useAgent } from "@/components/agent-provider"
-import { ArrowLeft, Building2, Bot, CheckCircle, Circle, ArrowRight } from "lucide-react"
+
+// Temporary icon replacements
+const ArrowLeft = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>←</div>
+const Building2 = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>🏢</div>
+const Bot = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>🤖</div>
+const CheckCircle = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>✓</div>
+const Circle = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>○</div>
+const ArrowRight = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>→</div>
 
 // New Minimalistic Nexus Logo with Glowing Square
 function NexusLogo({ className }: { className?: string }) {
@@ -196,6 +203,9 @@ export default function SetupPage() {
         status: "active" as const,
         createdAt: new Date().toISOString(),
         agentType,
+        lastSync: new Date().toISOString(),
+        models: [],
+        apiKey: agentData.apiKey || ""
       }
 
       addAgent(newAgent)
@@ -299,7 +309,7 @@ export default function SetupPage() {
                   <Label htmlFor="industry">Industry</Label>
                   <Select
                     value={orgData.industry}
-                    onValueChange={(value) => setOrgData({ ...orgData, industry: value })}
+                    onValueChange={(value: string) => setOrgData({ ...orgData, industry: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select industry" />
@@ -409,7 +419,7 @@ export default function SetupPage() {
                   <Label htmlFor="organization">Organization</Label>
                   <Select
                     value={agentData.organizationId}
-                    onValueChange={(value) => setAgentData({ ...agentData, organizationId: value })}
+                    onValueChange={(value: string) => setAgentData({ ...agentData, organizationId: value })}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select organization" />
@@ -594,9 +604,9 @@ export default function SetupPage() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="provider">AI Provider</Label>
-                      <Select
-                        value={agentData.provider}
-                        onValueChange={(value) => setAgentData({ ...agentData, provider: value, model: "" })}
+                                              <Select
+                          value={agentData.provider}
+                          onValueChange={(value: string) => setAgentData({ ...agentData, provider: value, model: "" })}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Select AI provider" />
@@ -614,9 +624,9 @@ export default function SetupPage() {
                     {agentData.provider && (
                       <div className="space-y-2">
                         <Label htmlFor="model">Model</Label>
-                        <Select
-                          value={agentData.model}
-                          onValueChange={(value) => setAgentData({ ...agentData, model: value })}
+                                                  <Select
+                            value={agentData.model}
+                            onValueChange={(value: string) => setAgentData({ ...agentData, model: value })}
                         >
                           <SelectTrigger>
                             <SelectValue placeholder="Select model" />

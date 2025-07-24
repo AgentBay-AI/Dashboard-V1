@@ -1,0 +1,42 @@
+# Version control
+.git
+.gitignore
+.gcloudignore
+
+# Dependencies
+node_modules/
+.pnpm-store/
+.npm/
+
+# Next.js build output
+.next/
+out/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Development files
+README.md
+*.log
+.vscode/
+.idea/
+*.test.js
+*.spec.js
+coverage/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keep these files
+!package.json
+!pnpm-lock.yaml
+!next.config.mjs
+!tsconfig.json
+!public/
+!app/
+!components/
+!styles/
+!lib/ 
