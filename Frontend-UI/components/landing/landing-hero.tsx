@@ -26,77 +26,74 @@ export function LandingHero() {
   const [selectedMetric, setSelectedMetric] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [dashboardData, setDashboardData] = useState({
-    activeAgents: 12,
-    alerts: 3,
-    performance: 94,
-    security: 98,
-    cost: 2847,
-    requests: 15420,
+    activeAgents: 0,
+    alerts: 0,
+    performance: 0,
+    security: 0,
+    cost: 0,
+    requests: 0,
   })
 
-  // Dummy agent data - set to empty array to test empty state
-  const [agents, setAgents] = useState([
-    {
-      id: 1,
-      name: "Customer Support Bot",
-      status: "Online" as const,
-      uptime: 99.8,
-      tokenUsage: 45230,
-      cost: 234.5,
-      provider: "OpenAI",
-      lastActive: "2 min ago",
-    },
-    {
-      id: 2,
-      name: "Content Generator",
-      status: "Online" as const,
-      uptime: 97.2,
-      tokenUsage: 78940,
-      cost: 412.3,
-      provider: "Anthropic",
-      lastActive: "5 min ago",
-    },
-    {
-      id: 3,
-      name: "Data Analyzer",
-      status: "Offline" as const,
-      uptime: 89.5,
-      tokenUsage: 23100,
-      cost: 156.8,
-      provider: "Google",
-      lastActive: "2 hours ago",
-    },
-    {
-      id: 4,
-      name: "Translation Service",
-      status: "Online" as const,
-      uptime: 95.7,
-      tokenUsage: 34560,
-      cost: 189.2,
-      provider: "OpenAI",
-      lastActive: "1 min ago",
-    },
-    {
-      id: 5,
-      name: "Code Assistant",
-      status: "Online" as const,
-      uptime: 92.3,
-      tokenUsage: 56780,
-      cost: 298.7,
-      provider: "Anthropic",
-      lastActive: "3 min ago",
-    },
-    {
-      id: 6,
-      name: "Email Classifier",
-      status: "Offline" as const,
-      uptime: 88.1,
-      tokenUsage: 12340,
-      cost: 87.4,
-      provider: "Google",
-      lastActive: "4 hours ago",
-    },
-  ])
+  // Real agent data from backend - no dummy data
+  const [agents, setAgents] = useState<any[]>([])
+
+  // Fetch real agents and dashboard data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch agents first
+        const agentsResponse = await fetch('http://localhost:8080/api/frontend/agents')
+        let fetchedAgents = []
+        
+        if (agentsResponse.ok) {
+          const result = await agentsResponse.json()
+          fetchedAgents = result.agents.map((agent: any) => ({
+            id: agent.id,
+            name: agent.name,
+            status: agent.status === 'active' ? 'Online' : 'Offline',
+            uptime: agent.performance || 0,
+            tokenUsage: agent.requests || 0,
+            cost: agent.cost || 0,
+            provider: agent.provider,
+            lastActive: new Date(agent.lastSync || Date.now()).toLocaleString(),
+          }))
+          setAgents(fetchedAgents)
+        }
+
+        // Then fetch dashboard data based on agents
+        const performanceResponse = await fetch('http://localhost:8080/api/analytics/performance')
+        if (performanceResponse.ok) {
+          const result = await performanceResponse.json()
+          const avgPerformance = result.data.reduce((sum: number, item: any) => sum + (item.success_rate || 0), 0) / result.data.length || 0
+          const totalCost = result.data.reduce((sum: number, item: any) => sum + (item.cost || 0), 0)
+          const totalRequests = result.data.reduce((sum: number, item: any) => sum + (item.requests || 0), 0)
+          
+          setDashboardData({
+            activeAgents: fetchedAgents.filter(a => a.status === 'Online').length,
+            alerts: 0, // Will come from alerts API
+            performance: Math.round(avgPerformance),
+            security: 0, // Will come from security API  
+            cost: Math.round(totalCost * 100) / 100,
+            requests: totalRequests
+          })
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error)
+        // Show empty state if backend fails
+        setAgents([])
+        setDashboardData({
+          activeAgents: 0,
+          alerts: 0,
+          performance: 0,
+          security: 0,
+          cost: 0,
+          requests: 0,
+        })
+      }
+    }
+
+    fetchData()
+  }, [])
 
   const [activeTab, setActiveTab] = useState("dashboard")
 

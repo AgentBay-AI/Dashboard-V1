@@ -1,24 +1,82 @@
-# Exclude git and temp files
-.git
-.gitignore
-.gcloudignore
-.env
-.env.*
+# This file specifies files that are *not* uploaded to Google Cloud
+# when using gcloud. It follows the same syntax as .gitignore, with the
+# addition of "#!include" directives (which insert the entries of the given
+# .gitignore-style file at that point).
 
-# Exclude node modules (will be installed during build)
+# Include .gitignore
+#!include:.gitignore
+
+# Node.js dependencies
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Exclude development files
-*.log
-*.test.js
-*.spec.js
-coverage/
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Development files
+src/
+*.ts
+*.js.map
+*.d.ts
+
+# Environment files (keep these local!)
+.env*
+*.env
+
+# IDE files
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Keep these files
-!package.json
-!package-lock.json
-!tsconfig.json
-!src/
-!dist/ 
+# Logs
+logs/
+*.log
+
+# Coverage reports
+coverage/
+.nyc_output/
+
+# Test files
+test/
+tests/
+*.test.js
+*.spec.js
+
+# Documentation
+README.md
+docs/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Docker development files
+docker-compose*.yml
+Dockerfile.dev
+
+# Local development scripts
+scripts/dev/
+scripts/local/
+
+# Temporary files
+.tmp/
+temp/
+tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Package files (we want package.json but not lock files for cloud build)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml 

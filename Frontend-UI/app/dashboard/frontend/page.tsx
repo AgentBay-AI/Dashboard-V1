@@ -1,181 +1,222 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import {
-  Monitor,
-  Users,
-  MousePointer,
-  Eye,
-  Clock,
-  Smartphone,
-  Globe,
   TrendingUp,
-  Download,
-  RefreshCw,
-  AlertCircle,
-  CheckCircle,
+  TrendingDown,
+  Eye,
+  Users,
+  Clock,
+  MousePointer,
+  Smartphone,
   Activity,
+  AlertCircle,
+  Download,
+  Calendar,
+  Filter,
+  RefreshCw,
+  Monitor,
+  Globe,
+  CheckCircle,
 } from "lucide-react"
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  Pie,
-  PieChart,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
 export default function FrontendAnalyticsPage() {
   const [timeRange, setTimeRange] = useState("7d")
   const [selectedMetric, setSelectedMetric] = useState("all")
-
-  // Mock analytics data
-  const overviewMetrics = [
-    {
-      title: "Total Page Views",
-      value: "124,563",
-      change: "+12.3%",
-      trend: "up",
-      icon: Eye,
-      color: "text-blue-600 dark:text-blue-400",
-    },
-    {
-      title: "Unique Visitors",
-      value: "23,847",
-      change: "+8.7%",
-      trend: "up",
-      icon: Users,
-      color: "text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      title: "Avg Session Duration",
-      value: "4m 32s",
-      change: "+15.2%",
-      trend: "up",
-      icon: Clock,
-      color: "text-violet-600 dark:text-violet-400",
-    },
-    {
-      title: "Bounce Rate",
-      value: "34.2%",
-      change: "-5.1%",
-      trend: "down",
-      icon: MousePointer,
-      color: "text-orange-600 dark:text-orange-400",
-    },
-    {
-      title: "Mobile Traffic",
-      value: "68.4%",
-      change: "+3.2%",
-      trend: "up",
-      icon: Smartphone,
-      color: "text-pink-600 dark:text-pink-400",
-    },
-    {
-      title: "Page Load Speed",
-      value: "1.8s",
-      change: "-0.3s",
-      trend: "down",
-      icon: Activity,
-      color: "text-cyan-600 dark:text-cyan-400",
-    },
-    {
-      title: "Conversion Rate",
-      value: "3.7%",
-      change: "+0.8%",
-      trend: "up",
-      icon: TrendingUp,
-      color: "text-green-600 dark:text-green-400",
-    },
-    {
-      title: "Error Rate",
-      value: "0.12%",
-      change: "-0.05%",
-      trend: "down",
-      icon: AlertCircle,
-      color: "text-red-600 dark:text-red-400",
-    },
-  ]
-
-  // Traffic data over time
-  const trafficData = [
-    { date: "Jan 1", pageViews: 4200, uniqueVisitors: 1200, sessions: 980 },
-    { date: "Jan 2", pageViews: 3800, uniqueVisitors: 1100, sessions: 890 },
-    { date: "Jan 3", pageViews: 5200, uniqueVisitors: 1400, sessions: 1200 },
-    { date: "Jan 4", pageViews: 4800, uniqueVisitors: 1300, sessions: 1100 },
-    { date: "Jan 5", pageViews: 6100, uniqueVisitors: 1600, sessions: 1350 },
-    { date: "Jan 6", pageViews: 5500, uniqueVisitors: 1450, sessions: 1250 },
-    { date: "Jan 7", pageViews: 4900, uniqueVisitors: 1350, sessions: 1150 },
-  ]
-
-  // Device breakdown
-  const deviceData = [
-    { name: "Mobile", value: 68.4, color: "#3b82f6" },
-    { name: "Desktop", value: 24.8, color: "#10b981" },
-    { name: "Tablet", value: 6.8, color: "#f59e0b" },
-  ]
-
-  // Top pages
-  const topPages = [
-    { page: "/dashboard", views: 12450, uniqueViews: 8920, avgTime: "5m 23s" },
-    { page: "/agents", views: 8930, uniqueViews: 6780, avgTime: "3m 45s" },
-    { page: "/analytics", views: 7650, uniqueViews: 5890, avgTime: "4m 12s" },
-    { page: "/settings", views: 5420, uniqueViews: 4230, avgTime: "2m 56s" },
-    { page: "/cost-tracking", views: 4890, uniqueViews: 3670, avgTime: "3m 28s" },
-  ]
-
-  // Geographic data
-  const geoData = [
-    { country: "United States", visitors: 8920, percentage: 37.4 },
-    { country: "United Kingdom", visitors: 3450, percentage: 14.5 },
-    { country: "Germany", visitors: 2890, percentage: 12.1 },
-    { country: "Canada", visitors: 2340, percentage: 9.8 },
-    { country: "France", visitors: 1890, percentage: 7.9 },
-    { country: "Others", visitors: 4357, percentage: 18.3 },
-  ]
-
-  // User behavior flow
-  const behaviorData = [
-    { step: "Landing", users: 10000, dropoff: 0 },
-    { step: "Dashboard", users: 8500, dropoff: 15 },
-    { step: "Agent Setup", users: 6800, dropoff: 20 },
-    { step: "Configuration", users: 5440, dropoff: 20 },
-    { step: "Completion", users: 4352, dropoff: 20 },
-  ]
-
-  // Error tracking
-  const errorData = [
-    { type: "404 Not Found", count: 45, percentage: 38.5 },
-    { type: "500 Server Error", count: 28, percentage: 23.9 },
-    { type: "403 Forbidden", count: 22, percentage: 18.8 },
-    { type: "Network Timeout", count: 15, percentage: 12.8 },
-    { type: "Others", count: 7, percentage: 6.0 },
-  ]
-
-  // Real-time data
-  const realTimeData = {
-    activeUsers: 1247,
-    currentPageViews: 89,
-    topActivePages: [
-      { page: "/dashboard", activeUsers: 34 },
-      { page: "/agents", activeUsers: 28 },
-      { page: "/analytics", activeUsers: 15 },
-      { page: "/settings", activeUsers: 12 },
-    ],
+  
+  // Type for overview metrics
+  interface OverviewMetric {
+    title: string
+    value: string
+    change: string
+    trend: string
+    icon: any
+    color: string
   }
+
+  // Type for device data
+  interface DeviceData {
+    name: string
+    value: number
+    color: string
+  }
+
+  // Type for top pages
+  interface TopPage {
+    page: string
+    views: number
+    uniqueViews: number
+    avgTime: string
+  }
+
+  // Type for geo data
+  interface GeoData {
+    country: string
+    visitors: number
+    percentage: number
+  }
+  
+  const [overviewMetrics, setOverviewMetrics] = useState<OverviewMetric[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Fetch real frontend analytics data
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch(`http://localhost:8080/api/analytics/frontend-stats?timeframe=${timeRange}`)
+        if (response.ok) {
+          const result = await response.json()
+          setOverviewMetrics(result.data.metrics || [])
+        } else {
+          // Show empty state if no data available
+          setOverviewMetrics([
+            {
+              title: "Total Page Views",
+              value: "0",
+              change: "0%",
+              trend: "up",
+              icon: Eye,
+              color: "text-blue-600 dark:text-blue-400",
+            },
+            {
+              title: "Unique Visitors", 
+              value: "0",
+              change: "0%",
+              trend: "up",
+              icon: Users,
+              color: "text-emerald-600 dark:text-emerald-400",
+            },
+            {
+              title: "Avg Session Duration",
+              value: "0s",
+              change: "0%",
+              trend: "up",
+              icon: Clock,
+              color: "text-violet-600 dark:text-violet-400",
+            },
+            {
+              title: "Bounce Rate",
+              value: "0%",
+              change: "0%",
+              trend: "down",
+              icon: MousePointer,
+              color: "text-orange-600 dark:text-orange-400",
+            },
+            {
+              title: "Mobile Traffic",
+              value: "0%",
+              change: "0%",
+              trend: "up",
+              icon: Smartphone,
+              color: "text-pink-600 dark:text-pink-400",
+            },
+            {
+              title: "Page Load Speed",
+              value: "0s",
+              change: "0s",
+              trend: "down",
+              icon: Activity,
+              color: "text-cyan-600 dark:text-cyan-400",
+            },
+            {
+              title: "Conversion Rate",
+              value: "0%",
+              change: "0%",
+              trend: "up",
+              icon: TrendingUp,
+              color: "text-green-600 dark:text-green-400",
+            },
+            {
+              title: "Error Rate",
+              value: "0%",
+              change: "0%",
+              trend: "down",
+              icon: AlertCircle,
+              color: "text-red-600 dark:text-red-400",
+            },
+          ])
+        }
+      } catch (error) {
+        console.error('Failed to fetch frontend analytics:', error)
+        // Show empty state on error
+        setOverviewMetrics([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAnalytics()
+  }, [timeRange])
+
+  // All chart data from backend - empty until real data loads
+  const [trafficData, setTrafficData] = useState<any[]>([])
+  const [deviceData, setDeviceData] = useState<DeviceData[]>([])
+  const [topPages, setTopPages] = useState<TopPage[]>([])
+  const [geoData, setGeoData] = useState<GeoData[]>([])
+  const [userFlowData, setUserFlowData] = useState<any[]>([])
+  const [conversionData, setConversionData] = useState<any[]>([])
+
+  // Fetch all chart data from backend
+  useEffect(() => {
+    const fetchChartData = async () => {
+      try {
+        // All frontend analytics chart data would come from backend
+        // Currently showing empty state since no analytics data exists
+        setTrafficData([])
+        setDeviceData([])
+        setTopPages([])
+        setGeoData([])
+        setUserFlowData([])
+        setConversionData([])
+      } catch (error) {
+        console.error('Failed to fetch frontend chart data:', error)
+        // Keep empty states
+      }
+    }
+
+    if (!loading) {
+      fetchChartData()
+    }
+  }, [timeRange, loading])
+
+  // All error and real-time data from backend - empty until real data loads
+  const [errorData, setErrorData] = useState<any[]>([])
+  const [realTimeData, setRealTimeData] = useState({
+    activeUsers: 0,
+    currentPageViews: 0,
+    topActivePages: [] as any[],
+  })
+
+  // Fetch error and real-time data from backend
+  useEffect(() => {
+    const fetchErrorData = async () => {
+      try {
+        // Error data would come from backend error tracking API
+        // Currently showing empty state since no error data exists
+        setErrorData([])
+        setRealTimeData({
+          activeUsers: 0,
+          currentPageViews: 0,
+          topActivePages: [],
+        })
+      } catch (error) {
+        console.error('Failed to fetch error data:', error)
+        // Keep empty states
+      }
+    }
+
+    if (!loading) {
+      fetchErrorData()
+    }
+  }, [loading])
 
   return (
     <div className="space-y-6 p-6">
@@ -215,33 +256,39 @@ export default function FrontendAnalyticsPage() {
 
       {/* Overview Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {overviewMetrics.map((metric) => {
-          const Icon = metric.icon
-          return (
-            <Card key={metric.title}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-muted-foreground mb-1">{metric.title}</p>
-                    <p className="text-xl font-semibold">{metric.value}</p>
-                    <p
-                      className={`text-sm font-medium mt-1 ${
-                        metric.trend === "up"
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-red-600 dark:text-red-400"
-                      }`}
-                    >
-                      {metric.change}
-                    </p>
+        {loading ? (
+          <p>Loading analytics...</p>
+        ) : overviewMetrics.length === 0 ? (
+          <p>No analytics data available for the selected timeframe.</p>
+        ) : (
+          overviewMetrics.map((metric) => {
+            const Icon = metric.icon
+            return (
+              <Card key={metric.title}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-muted-foreground mb-1">{metric.title}</p>
+                      <p className="text-xl font-semibold">{metric.value}</p>
+                      <p
+                        className={`text-sm font-medium mt-1 ${
+                          metric.trend === "up"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-red-600 dark:text-red-400"
+                        }`}
+                      >
+                        {metric.change}
+                      </p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-muted/50 ml-3">
+                      <Icon className={`h-5 w-5 ${metric.color}`} />
+                    </div>
                   </div>
-                  <div className="p-2 rounded-lg bg-muted/50 ml-3">
-                    <Icon className={`h-5 w-5 ${metric.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )
-        })}
+                </CardContent>
+              </Card>
+            )
+          })
+        )}
       </div>
 
       {/* Detailed Analytics */}
@@ -287,21 +334,20 @@ export default function FrontendAnalyticsPage() {
                       <XAxis dataKey="date" />
                       <YAxis />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Legend />
                       <Area
                         type="monotone"
                         dataKey="pageViews"
                         stackId="1"
-                        stroke="var(--color-pageViews)"
-                        fill="var(--color-pageViews)"
+                        stroke="hsl(var(--chart-1))"
+                        fill="hsl(var(--chart-1))"
                         fillOpacity={0.6}
                       />
                       <Area
                         type="monotone"
                         dataKey="uniqueVisitors"
                         stackId="2"
-                        stroke="var(--color-uniqueVisitors)"
-                        fill="var(--color-uniqueVisitors)"
+                        stroke="hsl(var(--chart-2))"
+                        fill="hsl(var(--chart-2))"
                         fillOpacity={0.6}
                       />
                     </AreaChart>
@@ -496,12 +542,12 @@ export default function FrontendAnalyticsPage() {
                 className="h-[300px]"
               >
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={behaviorData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                  <BarChart data={userFlowData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="step" />
                     <YAxis />
                     <ChartTooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="users" fill="var(--color-users)" />
+                    <Bar dataKey="users" fill="hsl(var(--chart-1))" />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartContainer>

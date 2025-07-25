@@ -11,14 +11,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useAgent } from "@/components/agent-provider"
-
-// Temporary icon replacements
-const ArrowLeft = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>←</div>
-const Building2 = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>🏢</div>
-const Bot = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>🤖</div>
-const CheckCircle = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>✓</div>
-const Circle = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>○</div>
-const ArrowRight = ({ className }: { className?: string }) => <div className={`${className} w-4 h-4`}>→</div>
+import { ArrowLeft, Building2, Bot, CheckCircle, Circle, ArrowRight } from "lucide-react"
 
 // New Minimalistic Nexus Logo with Glowing Square
 function NexusLogo({ className }: { className?: string }) {

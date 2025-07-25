@@ -1,117 +1,171 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { DollarSign, Calendar, Download, AlertTriangle, Zap, Target, PieChart, BarChart3, Activity } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
+import { LineChart, Line, AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts"
 import {
-  Bar,
-  BarChart,
-  Line,
-  Pie,
-  PieChart as RechartsPieChart,
-  Cell,
-  Area,
-  AreaChart,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  LineChart,
-} from "recharts"
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
+  Calendar,
+  Target,
+  Activity,
+  Download,
+  AlertTriangle,
+  CheckCircle,
+  Zap,
+  Filter,
+  RefreshCw,
+  BarChart3,
+} from "lucide-react"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
 export default function CostPage() {
   const [timeRange, setTimeRange] = useState("30d")
   const [selectedProvider, setSelectedProvider] = useState("all")
+  
+  // Type for overview metrics
+  interface OverviewMetric {
+    title: string
+    value: string
+    change: string
+    trend: string
+    icon: any
+    color: string
+  }
+  
+  const [overviewMetrics, setOverviewMetrics] = useState<OverviewMetric[]>([])
+  const [costData, setCostData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Mock cost data
-  const overviewMetrics = [
+  // Fetch real cost data from backend
+  useEffect(() => {
+    const fetchCostData = async () => {
+      try {
+        setLoading(true)
+        const response = await fetch(`http://localhost:8080/api/analytics/cost-breakdown?timeframe=${timeRange}`)
+        if (response.ok) {
+          const result = await response.json()
+          const data = result.data
+          
+          // Transform backend data to UI format
+          setOverviewMetrics([
     {
       title: "Total Cost",
-      value: "$2,847.32",
-      change: "+12.3%",
+              value: `$${data.total_cost || 0}`,
+              change: "Loading...",
       trend: "up",
       icon: DollarSign,
       color: "text-blue-600 dark:text-blue-400",
     },
     {
       title: "Daily Average",
-      value: "$94.91",
-      change: "-5.2%",
+              value: `$${((data.total_cost || 0) / 30).toFixed(2)}`,
+              change: "Loading...",
       trend: "down",
       icon: Calendar,
       color: "text-emerald-600 dark:text-emerald-400",
     },
     {
       title: "Cost per Token",
-      value: "$0.0023",
-      change: "+2.1%",
+              value: "$0.00",
+              change: "Loading...",
       trend: "up",
       icon: Target,
       color: "text-violet-600 dark:text-violet-400",
     },
     {
       title: "Budget Status",
-      value: "67%",
-      change: "On track",
+              value: "Unknown",
+              change: "No budget set",
       trend: "neutral",
       icon: Activity,
       color: "text-orange-600 dark:text-orange-400",
     },
-  ]
+          ])
+          
+          setCostData(data)
+        } else {
+          // Show empty state
+          setOverviewMetrics([
+            {
+              title: "Total Cost",
+              value: "$0.00",
+              change: "No data",
+              trend: "up",
+              icon: DollarSign,
+              color: "text-blue-600 dark:text-blue-400",
+            },
+            {
+              title: "Daily Average",
+              value: "$0.00",
+              change: "No data",
+              trend: "down", 
+              icon: Calendar,
+              color: "text-emerald-600 dark:text-emerald-400",
+            },
+            {
+              title: "Cost per Token",
+              value: "$0.00",
+              change: "No data",
+              trend: "up",
+              icon: Target,
+              color: "text-violet-600 dark:text-violet-400",
+            },
+            {
+              title: "Budget Status",
+              value: "0%",
+              change: "No budget",
+              trend: "neutral",
+              icon: Activity,
+              color: "text-orange-600 dark:text-orange-400",
+            },
+          ])
+        }
+      } catch (error) {
+        console.error('Failed to fetch cost data:', error)
+        // Show zero state on error
+        setOverviewMetrics([])
+        setCostData(null)
+      } finally {
+        setLoading(false)
+      }
+    }
 
-  // Monthly cost trends
-  const monthlyData = [
-    { month: "Jan", cost: 1850, tokens: 2.1 },
-    { month: "Feb", cost: 2100, tokens: 2.4 },
-    { month: "Mar", cost: 1950, tokens: 2.2 },
-    { month: "Apr", cost: 2300, tokens: 2.6 },
-    { month: "May", cost: 2650, tokens: 3.0 },
-    { month: "Jun", cost: 2847, tokens: 3.2 },
-  ]
+    fetchCostData()
+  }, [timeRange, selectedProvider])
 
-  // LLM provider distribution
-  const providerData = [
-    { name: "OpenAI", cost: 1247, percentage: 43.8, color: "#10b981" },
-    { name: "Anthropic", cost: 856, percentage: 30.1, color: "#3b82f6" },
-    { name: "Gemini", cost: 423, percentage: 14.9, color: "#f59e0b" },
-    { name: "Groq", cost: 321, percentage: 11.3, color: "#ef4444" },
-  ]
+  // Chart data from backend - empty until real data loads
+  const [monthlyData, setMonthlyData] = useState<any[]>([])
+  const [providerData, setProviderData] = useState<any[]>([])
+  const [dailyData, setDailyData] = useState<any[]>([])
+  const [featureData, setFeatureData] = useState<any[]>([])
+  const [projectionData, setProjectionData] = useState<any[]>([])
 
-  // Daily cost data
-  const dailyData = [
-    { date: "Jun 1", openai: 45, anthropic: 32, gemini: 18, groq: 12 },
-    { date: "Jun 2", openai: 52, anthropic: 28, gemini: 22, groq: 15 },
-    { date: "Jun 3", openai: 38, anthropic: 35, gemini: 16, groq: 18 },
-    { date: "Jun 4", openai: 61, anthropic: 42, gemini: 25, groq: 14 },
-    { date: "Jun 5", openai: 48, anthropic: 38, gemini: 20, groq: 16 },
-    { date: "Jun 6", openai: 55, anthropic: 31, gemini: 24, groq: 19 },
-    { date: "Jun 7", openai: 43, anthropic: 29, gemini: 17, groq: 13 },
-  ]
+  // Fetch real chart data from backend
+  useEffect(() => {
+    const fetchChartData = async () => {
+      try {
+        // All chart data would come from backend analytics APIs
+        // Currently showing empty state since no data exists
+        setMonthlyData([])
+        setProviderData([])
+        setDailyData([])
+        setFeatureData([])
+        setProjectionData([])
+      } catch (error) {
+        console.error('Failed to fetch chart data:', error)
+        // Keep empty states
+      }
+    }
 
-  // Feature usage breakdown
-  const featureData = [
-    { feature: "Chat Completions", cost: 1456, percentage: 51.2, requests: 45200 },
-    { feature: "Embeddings", cost: 623, percentage: 21.9, requests: 18900 },
-    { feature: "Image Generation", cost: 445, percentage: 15.6, requests: 3400 },
-    { feature: "Audio Processing", cost: 323, percentage: 11.3, requests: 2100 },
-  ]
-
-  // Cost projections
-  const projectionData = [
-    { month: "Jul", actual: null, projected: 3100, optimized: 2650 },
-    { month: "Aug", actual: null, projected: 3350, optimized: 2800 },
-    { month: "Sep", actual: null, projected: 3600, optimized: 2950 },
-    { month: "Oct", actual: null, projected: 3850, optimized: 3100 },
-    { month: "Nov", actual: null, projected: 4100, optimized: 3250 },
-    { month: "Dec", actual: null, projected: 4350, optimized: 3400 },
-  ]
+    fetchChartData()
+  }, [timeRange, selectedProvider])
 
   // Optimization recommendations
   const recommendations = [
@@ -261,7 +315,7 @@ export default function CostPage() {
               <CardContent>
                 <div className="h-[250px] flex items-center justify-center">
                   <ResponsiveContainer width="100%" height="100%">
-                    <RechartsPieChart>
+                    <PieChart>
                       <Pie
                         data={providerData}
                         cx="50%"
@@ -269,15 +323,14 @@ export default function CostPage() {
                         innerRadius={50}
                         outerRadius={80}
                         paddingAngle={5}
-                        dataKey="cost"
+                        dataKey="value"
                       >
-                        {providerData.map((entry, index) => (
+                        {providerData.map((entry: any, index: number) => (
                           <Cell key={`cell-${index}`} fill={entry.color} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`$${value}`, "Cost"]} />
-                      <Legend />
-                    </RechartsPieChart>
+                      <Tooltip />
+                    </PieChart>
                   </ResponsiveContainer>
                 </div>
               </CardContent>

@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 
 export interface Organization {
   id: string
@@ -46,56 +46,52 @@ interface AgentContextType {
 const AgentContext = createContext<AgentContextType | undefined>(undefined)
 
 export function AgentProvider({ children }: { children: ReactNode }) {
-  const [organizations, setOrganizations] = useState<Organization[]>([
-    {
-      id: "1",
-      name: "Acme Inc.",
-      industry: "Technology",
-      createdAt: new Date().toISOString(),
-      description: "Leading technology solutions provider",
-    },
-  ])
+  const [organizations, setOrganizations] = useState<Organization[]>([])
+  const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null)
 
-  const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(organizations[0])
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [loading, setLoading] = useState(false)
 
-  const [agents, setAgents] = useState<Agent[]>([
-    {
-      id: "1",
-      name: "Customer Support Bot",
-      description: "Handles customer inquiries and support tickets",
-      organizationId: "1",
-      provider: "openai",
-      framework: "langchain",
-      model: "gpt-4",
-      status: "active",
-      lastSync: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      models: ["gpt-4", "gpt-3.5-turbo"],
-      apiKey: "sk-***",
-      agentType: "custom",
-      createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-      performance: 95,
-      cost: 850,
-      requests: 12450,
-    },
-    {
-      id: "2",
-      name: "Content Generator",
-      description: "Generates marketing content and blog posts",
-      organizationId: "1",
-      provider: "anthropic",
-      framework: "custom",
-      model: "claude-3-opus",
-      status: "active",
-      lastSync: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      models: ["claude-3-opus"],
-      apiKey: "sk_ant-***",
-      agentType: "custom",
-      createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-      performance: 88,
-      cost: 400,
-      requests: 5230,
-    },
-  ])
+  // Fetch data from backend
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+      const backendUrl = 'http://localhost:8080'
+      
+      // Fetch organizations
+      const orgsResponse = await fetch(`${backendUrl}/api/frontend/organizations`)
+      if (orgsResponse.ok) {
+        const orgsData = await orgsResponse.json()
+        setOrganizations(orgsData.organizations || [])
+        if (orgsData.organizations && orgsData.organizations.length > 0 && !currentOrganization) {
+          setCurrentOrganization(orgsData.organizations[0])
+        }
+      }
+
+      // Fetch agents  
+      const agentsResponse = await fetch(`${backendUrl}/api/frontend/agents`)
+      if (agentsResponse.ok) {
+        const agentsData = await agentsResponse.json()
+        setAgents(agentsData.agents || [])
+      }
+      
+    } catch (error) {
+      console.error('Failed to fetch data from backend:', error)
+      
+      // No fallback data - everything must come from backend
+      // This ensures the UI only shows real data
+      setOrganizations([])
+      setAgents([])
+      setCurrentOrganization(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Load data on component mount
+  useEffect(() => {
+    fetchData()
+  }, [])
 
   const addOrganization = (org: Organization) => {
     setOrganizations((prev) => [...prev, org])

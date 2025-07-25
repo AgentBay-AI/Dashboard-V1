@@ -76,27 +76,45 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [loadingMethod, setLoadingMethod] = useState<string | null>(null)
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setLoadingMethod("email")
 
-    setTimeout(() => {
+    try {
+      const formData = new FormData(e.target as HTMLFormElement)
+      const email = formData.get("email") as string
+      const password = formData.get("password") as string
+      
+      // Simple demo authentication - accepts any email/password
+      setTimeout(() => {
+        setIsLoading(false)
+        setLoadingMethod(null)
+        router.push("/dashboard")
+      }, 1500)
+    } catch (error) {
+      console.error("Login failed:", error)
       setIsLoading(false)
       setLoadingMethod(null)
-      router.push("/setup")
-    }, 1500)
+    }
   }
 
-  const handleSocialLogin = (provider: string) => {
+  const handleSocialLogin = async (provider: string) => {
     setIsLoading(true)
     setLoadingMethod(provider)
 
-    setTimeout(() => {
+    try {
+      // For demo, just redirect to dashboard after delay
+      setTimeout(() => {
+        setIsLoading(false)
+        setLoadingMethod(null)
+        router.push("/dashboard")
+      }, 1500)
+    } catch (error) {
+      console.error("Social login failed:", error)
       setIsLoading(false)
       setLoadingMethod(null)
-      router.push("/setup")
-    }, 1500)
+    }
   }
 
   return (
@@ -174,7 +192,7 @@ export default function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input id="email" placeholder="name@example.com" type="email" className="pl-10 h-12" required />
+                <Input id="email" name="email" placeholder="name@example.com" type="email" className="pl-10 h-12" required />
               </div>
             </div>
 
@@ -187,7 +205,7 @@ export default function LoginPage() {
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input id="password" type="password" className="pl-10 h-12" required />
+                <Input id="password" name="password" type="password" className="pl-10 h-12" required />
               </div>
             </div>
 

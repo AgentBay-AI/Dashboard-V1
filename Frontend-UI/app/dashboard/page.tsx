@@ -24,7 +24,8 @@ import {
 } from "lucide-react"
 import { PerformanceChart } from "@/components/dashboard/performance-chart"
 import { ResourceUtilization } from "@/components/dashboard/resource-utilization"
-import { useState } from "react"
+import { BackendStatus } from "@/components/backend-status"
+import { useState, useEffect } from "react"
 
 export default function DashboardPage() {
   const { organizations, currentOrganization, setCurrentOrganization, getAgentsByOrganization, removeAgent } =
@@ -36,75 +37,70 @@ export default function DashboardPage() {
   const currentAgents = currentOrganization ? getAgentsByOrganization(currentOrganization.id) : []
   const selectedAgentData = selectedAgent ? currentAgents.find((agent) => agent.id === selectedAgent) : null
 
-  // Mock individual agent metrics
-  const getAgentMetrics = (agentId: string) => {
-    const baseMetrics = {
-      performance: Math.floor(Math.random() * 20) + 80, // 80-100%
-      security: Math.floor(Math.random() * 10) + 90, // 90-100%
-      cost: Math.floor(Math.random() * 500) + 100, // $100-600
-      quality: (Math.random() * 1 + 4).toFixed(1), // 4.0-5.0
-    }
-    return baseMetrics
-  }
+  // Real metrics from backend - no mock data
+  const [realMetrics, setRealMetrics] = useState({
+    performance: "0%",
+    security: "0%", 
+    cost: "$0",
+    quality: "0/5",
+  })
 
-  // Calculate average metrics for all agents
-  const getAverageMetrics = () => {
-    if (currentAgents.length === 0) {
-      return {
-        performance: "0%",
-        security: "0%",
-        cost: "$0",
-        quality: "0/5",
-      }
-    }
-
-    const totalMetrics = currentAgents.reduce(
-      (acc, agent) => {
-        const metrics = getAgentMetrics(agent.id)
-        return {
-          performance: acc.performance + metrics.performance,
-          security: acc.security + metrics.security,
-          cost: acc.cost + metrics.cost,
-          quality: acc.quality + Number.parseFloat(metrics.quality),
+  // Fetch real metrics from backend
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      try {
+        const agentId = selectedAgentData?.id
+        const url = agentId 
+          ? `http://localhost:8080/api/analytics/performance?agent_id=${agentId}`
+          : `http://localhost:8080/api/analytics/performance`
+        
+        const response = await fetch(url)
+        if (response.ok) {
+          const result = await response.json()
+          // Transform real data to display format
+          const avgPerformance = result.data.reduce((sum: number, item: any) => sum + (item.success_rate || 0), 0) / result.data.length || 0
+          const avgCost = result.data.reduce((sum: number, item: any) => sum + (item.cost || 0), 0)
+          
+          setRealMetrics({
+            performance: `${Math.round(avgPerformance)}%`,
+            security: "N/A", // Will be implemented with security endpoints
+            cost: `$${Math.round(avgCost * 100) / 100}`,
+            quality: "N/A", // Will be calculated from feedback data
+          })
         }
-      },
-      { performance: 0, security: 0, cost: 0, quality: 0 },
-    )
-
-    return {
-      performance: `${Math.round(totalMetrics.performance / currentAgents.length)}%`,
-      security: `${Math.round(totalMetrics.security / currentAgents.length)}%`,
-      cost: `$${Math.round(totalMetrics.cost / currentAgents.length)}`,
-      quality: `${(totalMetrics.quality / currentAgents.length).toFixed(1)}/5`,
-    }
-  }
-
-  const averageMetrics = getAverageMetrics()
-  const displayMetrics = selectedAgentData
-    ? {
-        performance: `${getAgentMetrics(selectedAgentData.id).performance}%`,
-        security: `${getAgentMetrics(selectedAgentData.id).security}%`,
-        cost: `$${getAgentMetrics(selectedAgentData.id).cost}`,
-        quality: `${getAgentMetrics(selectedAgentData.id).quality}/5`,
+      } catch (error) {
+        console.error('Failed to fetch metrics:', error)
+        // Show zero state instead of mock data
+        setRealMetrics({
+          performance: "0%",
+          security: "0%",
+          cost: "$0", 
+          quality: "0/5",
+        })
       }
-    : averageMetrics
+    }
 
-  // Analytics data based on selected view
+    fetchMetrics()
+  }, [selectedAgentData, currentAgents])
+
+  const displayMetrics = realMetrics
+
+  // Analytics data from real metrics
   const analyticsData = [
     {
       id: "performance",
       title: "Performance Score",
       value: displayMetrics.performance,
-      change: selectedAgentData ? "+1.2%" : "+2.1%",
+      change: "Loading...", // Real trend calculation would come from backend
       trend: "up",
       icon: Zap,
       color: "text-emerald-600 dark:text-emerald-400",
     },
     {
       id: "security",
-      title: "Security Rating",
+      title: "Security Rating", 
       value: displayMetrics.security,
-      change: selectedAgentData ? "+0.1%" : "+0.3%",
+      change: "Loading...",
       trend: "up",
       icon: Shield,
       color: "text-blue-600 dark:text-blue-400",
@@ -113,23 +109,23 @@ export default function DashboardPage() {
       id: "cost",
       title: selectedAgentData ? "Agent Cost" : "Avg Monthly Cost",
       value: displayMetrics.cost,
-      change: selectedAgentData ? "-2.1%" : "-5.2%",
+      change: "Loading...",
       trend: "down",
       icon: DollarSign,
       color: "text-violet-600 dark:text-violet-400",
     },
     {
-      id: "conversation",
+      id: "conversation", 
       title: "Conversation Quality",
       value: displayMetrics.quality,
-      change: selectedAgentData ? "+0.1" : "+0.2",
+      change: "Loading...",
       trend: "up",
       icon: MessageSquare,
       color: "text-orange-600 dark:text-orange-400",
     },
   ]
 
-  const recentActivity = [
+  const [recentActivity, setRecentActivity] = useState([
     {
       id: 1,
       type: "success",
@@ -157,7 +153,31 @@ export default function DashboardPage() {
       icon: Shield,
       color: "text-blue-600 dark:text-blue-400",
     },
-  ]
+  ])
+
+  // Fetch recent activity from backend
+  useEffect(() => {
+    const fetchActivity = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/api/analytics/activity?limit=5')
+        if (response.ok) {
+          const result = await response.json()
+          const activities = result.data.map((activity: any) => ({
+            ...activity,
+            icon: activity.icon === 'TrendingUp' ? TrendingUp : 
+                  activity.icon === 'AlertTriangle' ? AlertTriangle :
+                  activity.icon === 'Shield' ? Shield : Activity
+          }))
+          setRecentActivity(activities)
+        }
+      } catch (error) {
+        console.error('Failed to fetch activity:', error)
+        // Keep default activity data
+      }
+    }
+
+    fetchActivity()
+  }, [currentOrganization])
 
   const handleDeleteAgent = (agentId: string) => {
     if (deleteConfirm === agentId) {
@@ -350,11 +370,16 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {currentAgents.length > 0 ? (
-              currentAgents.map((agent) => {
-                const agentMetrics = getAgentMetrics(agent.id)
-                const isSelected = selectedAgent === agent.id
+                                currentAgents.map((agent) => {
+                    // Use real agent metrics from backend data
+                    const agentMetrics = {
+                      performance: agent.performance || 0,
+                      security: 0, // Will come from backend security data
+                      cost: agent.cost || 0
+                    }
+                    const isSelected = selectedAgent === agent.id
 
-                return (
+                    return (
                   <div
                     key={agent.id}
                     className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-all hover:shadow-sm ${
@@ -493,6 +518,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Backend Status */}
+      <BackendStatus />
 
       {/* Performance Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
