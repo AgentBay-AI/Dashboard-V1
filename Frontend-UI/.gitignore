@@ -25,3 +25,22 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Google OAuth and other sensitive credentials
+client_secret_*.json
+*_credentials.json
+service-account-key.json
+
+# API keys and secrets
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Database dumps
+*.sql
+*.db
+*.sqlite
+
+# Supabase local development
+.supabase/
