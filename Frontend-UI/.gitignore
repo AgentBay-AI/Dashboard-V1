@@ -30,17 +30,56 @@ next-env.d.ts
 client_secret_*.json
 *_credentials.json
 service-account-key.json
+*_secret.json
+oauth.json
+google-credentials.json
 
 # API keys and secrets
+*api-key*
+*api_key*
+*secret-key*
+*secret_key*
 *.key
 *.pem
 *.p12
 *.pfx
+*.private
+auth.json
+secrets.json
+credentials.json
 
-# Database dumps
+# NextAuth secrets
+.nextauth/
+nextauth.log
+jwt-secret.txt
+session-secret.txt
+
+# Database dumps and credentials
 *.sql
 *.db
 *.sqlite
+*.sqlite3
+database.json
+db-credentials.json
 
-# Supabase local development
+# Supabase
 .supabase/
+supabase.json
+supabase-key.txt
+
+# Frontend specific secrets
+firebase-config.json
+stripe-keys.json
+analytics-keys.json
+
+# SSL/TLS Certificates
+*.crt
+*.jks
+*.keystore
+*.truststore
+
+# Backup and temporary files
+*.backup
+*.bak
+backup/
+backups/

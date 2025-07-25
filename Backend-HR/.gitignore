@@ -37,12 +37,54 @@ npm-debug.log*
 coverage/
 .nyc_output/
 
-# Google Cloud
+# Google Cloud & Sensitive Credentials
 .gcloud/
 *.serviceaccount.json
 gcloud.json
 google-credentials.json
 *-credentials.json
+client_secret_*.json
+*_secret.json
+service-account-*.json
+
+# API Keys and Authentication
+*api-key*
+*api_key*
+*secret-key*
+*secret_key*
+*.key
+*.private
+auth.json
+secrets.json
+credentials.json
+
+# Supabase
+.supabase/
+supabase.json
+supabase-key.txt
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+database.json
+db-credentials.json
+
+# SSL/TLS Certificates
+*.pem
+*.crt
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.truststore
+
+# Backend Specific Secrets
+jwt-secret.txt
+session-secret.txt
+encryption-key.txt
+webhook-secrets.json
 
 # Runtime data
 pids/
