@@ -43,12 +43,12 @@ export default function DashboardPage() {
   const [activityLoading, setActivityLoading] = useState(true)
   const [chartsLoading, setChartsLoading] = useState(true)
 
-  // Real metrics from backend - no mock data
+  // Real metrics from backend - show zeros immediately, update when data loads
   const [realMetrics, setRealMetrics] = useState({
-    performance: "Loading...",
-    security: "Loading...", 
-    cost: "Loading...",
-    quality: "Loading...",
+    performance: "0%",
+    security: "0%", 
+    cost: "$0.00",
+    quality: "0/5",
   })
 
   // Real analytics data
@@ -60,7 +60,7 @@ export default function DashboardPage() {
   const [lastFetchTime, setLastFetchTime] = useState<number>(0)
   const CACHE_DURATION = 30000 // 30 seconds
 
-  // Optimized fetch function with caching and error handling
+  // Optimized fetch function with immediate zeros display
   const fetchDashboardData = async (showLoading = true) => {
     const now = Date.now()
     
@@ -80,23 +80,23 @@ export default function DashboardPage() {
       const backendUrl = 'http://localhost:8080'
       const agentId = selectedAgentData?.id
 
-      // Batch API calls for better performance
+      // Batch API calls with shorter timeouts for speed
       const [performanceRes, resourceRes, costRes, activityRes] = await Promise.allSettled([
         fetch(`${backendUrl}/api/analytics/performance${agentId ? `?agent_id=${agentId}` : ''}`, {
-          signal: AbortSignal.timeout(10000) // 10 second timeout
+          signal: AbortSignal.timeout(5000) // Reduced to 5 seconds
         }),
         fetch(`${backendUrl}/api/analytics/resource-utilization`, {
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(5000)
         }),
         fetch(`${backendUrl}/api/analytics/cost-breakdown`, {
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(5000)
         }),
         fetch(`${backendUrl}/api/analytics/activity?limit=5`, {
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(5000)
         })
       ])
 
-      // Process performance data
+      // Process performance data with fallback to zeros
       if (performanceRes.status === 'fulfilled' && performanceRes.value.ok) {
         const perfData = await performanceRes.value.json()
         const avgPerformance = perfData.average_performance || 0
@@ -104,23 +104,18 @@ export default function DashboardPage() {
         
         setRealMetrics({
           performance: `${avgPerformance}%`,
-          security: "95%", // Placeholder until security endpoint is ready
+          security: "0%", // Keep as 0% until security endpoint is ready
           cost: `$${totalCost.toFixed(2)}`,
-          quality: "4.2/5", // Placeholder until quality scoring is ready
+          quality: "0/5", // Keep as 0/5 until quality scoring is ready
         })
 
         setAnalyticsData(perfData.data || [])
-        setChartsLoading(false)
       } else {
-        setRealMetrics({
-          performance: "0%",
-          security: "0%",
-          cost: "$0", 
-          quality: "0/5",
-        })
-        setAnalyticsData([])
+        // Keep zeros - don't change from initial state
+        console.log('Analytics API not responding, keeping zero state')
       }
       setMetricsLoading(false)
+      setChartsLoading(false)
 
       // Process resource utilization
       if (resourceRes.status === 'fulfilled' && resourceRes.value.ok) {
@@ -143,8 +138,6 @@ export default function DashboardPage() {
                  activity.severity === 'medium' ? 'text-amber-600' : 'text-blue-600'
         }))
         setRecentActivity(activities)
-      } else {
-        setRecentActivity([])
       }
       setActivityLoading(false)
 
@@ -153,15 +146,7 @@ export default function DashboardPage() {
     } catch (error) {
       console.error('❌ Failed to fetch dashboard data:', error)
       
-      // Show error states instead of empty
-      setRealMetrics({
-        performance: "Error",
-        security: "Error",
-        cost: "Error", 
-        quality: "Error",
-      })
-      setAnalyticsData([])
-      setRecentActivity([])
+      // Keep zeros instead of showing error
       setMetricsLoading(false)
       setActivityLoading(false)
       setChartsLoading(false)
@@ -170,70 +155,67 @@ export default function DashboardPage() {
     }
   }
 
-  // Initial data fetch with debouncing
+  // Fast initial load - no debounce, immediate display
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      fetchDashboardData(true)
-    }, 300) // 300ms debounce
+    fetchDashboardData(false) // Don't show loading on initial load
+  }, [selectedAgentData?.id])
 
-    return () => clearTimeout(timeoutId)
-  }, [selectedAgentData?.id]) // Only re-fetch when agent changes
-
-  // Optimized auto-refresh (less aggressive)
+  // Reduced auto-refresh for better performance
   useEffect(() => {
     const interval = setInterval(() => {
       if (!isLoading && !metricsLoading) {
         fetchDashboardData(false) // Silent refresh
       }
-    }, 60000) // Increased to 60 seconds for better performance
+    }, 120000) // Increased to 2 minutes for better performance
 
     return () => clearInterval(interval)
   }, [isLoading, metricsLoading, lastFetchTime])
 
   const displayMetrics = realMetrics
 
+  // Create analytics cards data with zero values by default
+  const analyticsCardsData = [
+    {
+      id: "performance", 
+      title: "Performance Score", 
+      value: displayMetrics.performance, 
+      change: "0%", 
+      trend: "up" as const, 
+      icon: Zap, 
+      color: "text-emerald-600 dark:text-emerald-400"
+    },
+    {
+      id: "security", 
+      title: "Security Rating", 
+      value: displayMetrics.security, 
+      change: "0%", 
+      trend: "up" as const, 
+      icon: Shield, 
+      color: "text-blue-600 dark:text-blue-400"
+    },
+    {
+      id: "cost", 
+      title: selectedAgentData ? "Agent Cost" : "Avg Monthly Cost", 
+      value: displayMetrics.cost, 
+      change: "0%", 
+      trend: "down" as const, 
+      icon: DollarSign, 
+      color: "text-violet-600 dark:text-violet-400"
+    },
+    {
+      id: "conversation", 
+      title: "Conversation Quality", 
+      value: displayMetrics.quality, 
+      change: "0%", 
+      trend: "up" as const, 
+      icon: MessageSquare, 
+      color: "text-orange-600 dark:text-orange-400"
+    },
+  ]
+
   // Populate analytics data from real metrics when they change
   useEffect(() => {
-    const formattedAnalytics = [
-      {
-        id: "performance",
-        title: "Performance Score",
-        value: displayMetrics.performance,
-        change: "Loading...", // Real trend calculation would come from backend
-        trend: "up",
-        icon: Zap,
-        color: "text-emerald-600 dark:text-emerald-400",
-      },
-      {
-        id: "security",
-        title: "Security Rating", 
-        value: displayMetrics.security,
-        change: "Loading...",
-        trend: "up",
-        icon: Shield,
-        color: "text-blue-600 dark:text-blue-400",
-      },
-      {
-        id: "cost",
-        title: selectedAgentData ? "Agent Cost" : "Avg Monthly Cost",
-        value: displayMetrics.cost,
-        change: "Loading...",
-        trend: "down",
-        icon: DollarSign,
-        color: "text-violet-600 dark:text-violet-400",
-      },
-      {
-        id: "conversation", 
-        title: "Conversation Quality",
-        value: displayMetrics.quality,
-        change: "Loading...",
-        trend: "up",
-        icon: MessageSquare,
-        color: "text-orange-600 dark:text-orange-400",
-      },
-    ]
-    
-    setAnalyticsData(formattedAnalytics)
+    setAnalyticsData(analyticsCardsData)
   }, [displayMetrics, selectedAgentData])
 
   // Fetch recent activity from backend
@@ -427,8 +409,8 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
           ))
-        ) : analyticsData.length > 0 ? (
-          analyticsData.map((metric) => {
+        ) : (
+          analyticsCardsData.map((metric) => {
             const Icon = metric.icon
             return (
               <Card key={metric.id}>
@@ -455,13 +437,6 @@ export default function DashboardPage() {
               </Card>
             )
           })
-        ) : (
-          // Empty state when no data
-          <div className="col-span-full text-center py-8">
-            <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">No analytics data available</p>
-            <p className="text-xs text-muted-foreground mt-1">Connect agents to see performance metrics</p>
-          </div>
         )}
       </div>
 

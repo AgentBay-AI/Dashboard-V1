@@ -1,9 +1,50 @@
+"use client"
+
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { RiskAssessment } from "@/components/dashboard/risk-assessment"
 import { SessionHistoryChart } from "@/components/dashboard/session-history-chart"
 import { FailedSessionsChart } from "@/components/dashboard/failed-sessions-chart"
+import { PieChart } from "lucide-react"
 
 export default function AnalysisPage() {
+  const [sessionData, setSessionData] = useState({
+    total: 0,
+    successful: 0,
+    failed: 0,
+    pending: 0
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchSessionData = async () => {
+      try {
+        const response = await fetch('http://localhost:8080/api/analytics/session-stats', {
+          signal: AbortSignal.timeout(5000)
+        })
+        if (response.ok) {
+          const result = await response.json()
+          setSessionData(result.data || {
+            total: 0,
+            successful: 0,
+            failed: 0,
+            pending: 0
+          })
+        }
+      } catch (error) {
+        console.error('Failed to fetch session data:', error)
+        // Keep zero state
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchSessionData()
+  }, [])
+
+  const successPercentage = sessionData.total > 0 ? (sessionData.successful / sessionData.total) * 100 : 0
+  const failedPercentage = sessionData.total > 0 ? (sessionData.failed / sessionData.total) * 100 : 0
+
   return (
     <div className="space-y-8">
       <div>
@@ -21,39 +62,56 @@ export default function AnalysisPage() {
             <CardDescription>Distribution of session outcomes</CardDescription>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <div className="relative h-60 w-60">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-4xl font-bold">225</div>
-                  <div className="text-sm text-muted-foreground">sessions</div>
-                </div>
+            {loading ? (
+              <div className="h-60 w-60 flex items-center justify-center">
+                <div className="text-sm text-muted-foreground">Loading...</div>
               </div>
-              <svg className="h-full w-full" viewBox="0 0 120 120">
-                <circle cx="60" cy="60" r="54" fill="none" stroke="hsl(var(--muted))" strokeWidth="12" />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="54"
-                  fill="none"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth="12"
-                  strokeDasharray="339.3"
-                  strokeDashoffset="84.8"
-                  transform="rotate(-90 60 60)"
-                />
-                <circle
-                  cx="60"
-                  cy="60"
-                  r="54"
-                  fill="none"
-                  stroke="hsl(var(--destructive))"
-                  strokeWidth="12"
-                  strokeDasharray="339.3"
-                  strokeDashoffset="305.4"
-                  transform="rotate(192 60 60)"
-                />
-              </svg>
-            </div>
+            ) : sessionData.total === 0 ? (
+              <div className="h-60 w-60 flex flex-col items-center justify-center text-center">
+                <PieChart className="h-12 w-12 text-muted-foreground mb-3" />
+                <div className="text-lg font-semibold text-muted-foreground">0</div>
+                <div className="text-sm text-muted-foreground">sessions</div>
+                <p className="text-xs text-muted-foreground mt-2">No session data available</p>
+              </div>
+            ) : (
+              <div className="relative h-60 w-60">
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="text-4xl font-bold">{sessionData.total}</div>
+                    <div className="text-sm text-muted-foreground">sessions</div>
+                  </div>
+                </div>
+                <svg className="h-full w-full" viewBox="0 0 120 120">
+                  <circle cx="60" cy="60" r="54" fill="none" stroke="hsl(var(--muted))" strokeWidth="12" />
+                  {successPercentage > 0 && (
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="54"
+                      fill="none"
+                      stroke="hsl(var(--primary))"
+                      strokeWidth="12"
+                      strokeDasharray={`${(successPercentage / 100) * 339.3} 339.3`}
+                      strokeDashoffset="0"
+                      transform="rotate(-90 60 60)"
+                    />
+                  )}
+                  {failedPercentage > 0 && (
+                    <circle
+                      cx="60"
+                      cy="60"
+                      r="54"
+                      fill="none"
+                      stroke="hsl(var(--destructive))"
+                      strokeWidth="12"
+                      strokeDasharray={`${(failedPercentage / 100) * 339.3} 339.3`}
+                      strokeDashoffset={`-${(successPercentage / 100) * 339.3}`}
+                      transform="rotate(-90 60 60)"
+                    />
+                  )}
+                </svg>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -62,84 +120,26 @@ export default function AnalysisPage() {
         <FailedSessionsChart />
         <Card>
           <CardHeader>
-            <CardTitle>Session Cost</CardTitle>
-            <CardDescription>Cost per session type</CardDescription>
+            <CardTitle>Session Performance</CardTitle>
+            <CardDescription>Key metrics overview</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-6">
-              {/* GPT-4 Sessions */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>GPT-4 Sessions</span>
-                  <span>$100.00</span>
-                </div>
-                <div className="relative h-2 w-full bg-slate-200 dark:bg-slate-700 rounded">
-                  <div className="absolute inset-y-0 left-0 bg-blue-500 rounded" style={{ width: "40%" }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>1,250 sessions @ $0.08 each</span>
-                  <span>40%</span>
-                </div>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Success Rate</span>
+                <span className="font-medium">{successPercentage.toFixed(1)}%</span>
               </div>
-
-              {/* Claude Sessions */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Claude Sessions</span>
-                  <span>$126.00</span>
-                </div>
-                <div className="relative h-2 w-full bg-slate-200 dark:bg-slate-700 rounded">
-                  <div className="absolute inset-y-0 left-0 bg-purple-500 rounded" style={{ width: "50%" }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>2,100 sessions @ $0.06 each</span>
-                  <span>50%</span>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Total Sessions</span>
+                <span className="font-medium">{sessionData.total}</span>
               </div>
-
-              {/* Gemini Sessions */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Gemini Sessions</span>
-                  <span>$6.00</span>
-                </div>
-                <div className="relative h-2 w-full bg-slate-200 dark:bg-slate-700 rounded">
-                  <div className="absolute inset-y-0 left-0 bg-green-500 rounded" style={{ width: "2%" }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>150 sessions @ $0.04 each</span>
-                  <span>2%</span>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Failed Sessions</span>
+                <span className="font-medium">{sessionData.failed}</span>
               </div>
-
-              {/* Groq Sessions */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Groq Sessions</span>
-                  <span>$16.00</span>
-                </div>
-                <div className="relative h-2 w-full bg-slate-200 dark:bg-slate-700 rounded">
-                  <div className="absolute inset-y-0 left-0 bg-amber-500 rounded" style={{ width: "6%" }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>800 sessions @ $0.02 each</span>
-                  <span>6%</span>
-                </div>
-              </div>
-
-              {/* Mistral Sessions */}
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Mistral Sessions</span>
-                  <span>$6.00</span>
-                </div>
-                <div className="relative h-2 w-full bg-slate-200 dark:bg-slate-700 rounded">
-                  <div className="absolute inset-y-0 left-0 bg-red-500 rounded" style={{ width: "2%" }}></div>
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>200 sessions @ $0.03 each</span>
-                  <span>2%</span>
-                </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Pending Sessions</span>
+                <span className="font-medium">{sessionData.pending}</span>
               </div>
             </div>
           </CardContent>

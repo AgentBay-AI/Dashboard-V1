@@ -3,27 +3,34 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Supabase configuration - Use the real Supabase URL from Google OAuth config
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xedlnzqfwdgkummqeauv.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key';
+// Supabase configuration - Use the correct environment variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.error('🔴 CRITICAL: SUPABASE_SERVICE_ROLE_KEY environment variable is missing!');
-  console.error('Please create Backend-HR/.env with your Supabase service role key');
-  console.warn('⚠️  Using placeholder key - database operations may fail');
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('🔴 CRITICAL: Missing Supabase environment variables!');
+  console.error('Required: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY');
+  console.error('Please create Backend-HR/.env with these variables');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseServiceKey || 'placeholder-key', 
+  {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
   }
-});
+);
 
 // Test connection function
 export async function testConnection(): Promise<boolean> {
   try {
     console.log('🔄 Testing Supabase connection...');
+    console.log('📍 URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
+    console.log('🔑 Service Key:', supabaseServiceKey ? '✅ Set' : '❌ Missing');
+    
     const { data, error } = await supabase
       .from('organizations')
       .select('count(*)')
