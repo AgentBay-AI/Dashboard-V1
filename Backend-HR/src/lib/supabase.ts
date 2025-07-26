@@ -31,10 +31,10 @@ export async function testConnection(): Promise<boolean> {
     console.log('📍 URL:', supabaseUrl ? '✅ Set' : '❌ Missing');
     console.log('🔑 Service Key:', supabaseServiceKey ? '✅ Set' : '❌ Missing');
     
-    const { data, error } = await supabase
+    // Fix the query syntax - use proper count syntax
+    const { count, error } = await supabase
       .from('organizations')
-      .select('count(*)')
-      .limit(1);
+      .select('*', { count: 'exact', head: true });
     
     if (error) {
       console.error('🔴 Supabase connection test failed:', error.message);
@@ -42,6 +42,7 @@ export async function testConnection(): Promise<boolean> {
     }
     
     console.log('✅ Supabase connection successful');
+    console.log(`📊 Found ${count || 0} organizations`);
     return true;
   } catch (error) {
     console.error('🔴 Supabase connection failed:', error);
