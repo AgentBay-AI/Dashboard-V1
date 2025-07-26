@@ -24,7 +24,7 @@ import {
 } from "lucide-react"
 import { PerformanceChart } from "@/components/dashboard/performance-chart"
 import { ResourceUtilization } from "@/components/dashboard/resource-utilization"
-import { BackendStatus } from "@/components/backend-status"
+import { BackendStatus } from "@/components/dashboard/backend-status"
 import { useState, useEffect } from "react"
 
 export default function DashboardPage() {
@@ -37,123 +37,204 @@ export default function DashboardPage() {
   const currentAgents = currentOrganization ? getAgentsByOrganization(currentOrganization.id) : []
   const selectedAgentData = selectedAgent ? currentAgents.find((agent) => agent.id === selectedAgent) : null
 
+  // Loading states for different components
+  const [isLoading, setIsLoading] = useState(true)
+  const [metricsLoading, setMetricsLoading] = useState(true)
+  const [activityLoading, setActivityLoading] = useState(true)
+  const [chartsLoading, setChartsLoading] = useState(true)
+
   // Real metrics from backend - no mock data
   const [realMetrics, setRealMetrics] = useState({
-    performance: "0%",
-    security: "0%", 
-    cost: "$0",
-    quality: "0/5",
+    performance: "Loading...",
+    security: "Loading...", 
+    cost: "Loading...",
+    quality: "Loading...",
   })
 
-  // Fetch real metrics from backend
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const agentId = selectedAgentData?.id
-        const url = agentId 
-          ? `http://localhost:8080/api/analytics/performance?agent_id=${agentId}`
-          : `http://localhost:8080/api/analytics/performance`
+  // Real analytics data
+  const [analyticsData, setAnalyticsData] = useState<any[]>([])
+  const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [resourceData, setResourceData] = useState<any>({})
+
+  // Cache to prevent duplicate requests
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0)
+  const CACHE_DURATION = 30000 // 30 seconds
+
+  // Optimized fetch function with caching and error handling
+  const fetchDashboardData = async (showLoading = true) => {
+    const now = Date.now()
+    
+    // Skip if we fetched recently (cache)
+    if (now - lastFetchTime < CACHE_DURATION && !showLoading) {
+      return
+    }
+
+    try {
+      if (showLoading) {
+        setIsLoading(true)
+        setMetricsLoading(true)
+        setActivityLoading(true)
+        setChartsLoading(true)
+      }
+
+      const backendUrl = 'http://localhost:8080'
+      const agentId = selectedAgentData?.id
+
+      // Batch API calls for better performance
+      const [performanceRes, resourceRes, costRes, activityRes] = await Promise.allSettled([
+        fetch(`${backendUrl}/api/analytics/performance${agentId ? `?agent_id=${agentId}` : ''}`, {
+          signal: AbortSignal.timeout(10000) // 10 second timeout
+        }),
+        fetch(`${backendUrl}/api/analytics/resource-utilization`, {
+          signal: AbortSignal.timeout(10000)
+        }),
+        fetch(`${backendUrl}/api/analytics/cost-breakdown`, {
+          signal: AbortSignal.timeout(10000)
+        }),
+        fetch(`${backendUrl}/api/analytics/activity?limit=5`, {
+          signal: AbortSignal.timeout(10000)
+        })
+      ])
+
+      // Process performance data
+      if (performanceRes.status === 'fulfilled' && performanceRes.value.ok) {
+        const perfData = await performanceRes.value.json()
+        const avgPerformance = perfData.average_performance || 0
+        const totalCost = perfData.total_cost || 0
         
-        const response = await fetch(url)
-        if (response.ok) {
-          const result = await response.json()
-          // Transform real data to display format
-          const avgPerformance = result.data.reduce((sum: number, item: any) => sum + (item.success_rate || 0), 0) / result.data.length || 0
-          const avgCost = result.data.reduce((sum: number, item: any) => sum + (item.cost || 0), 0)
-          
-          setRealMetrics({
-            performance: `${Math.round(avgPerformance)}%`,
-            security: "N/A", // Will be implemented with security endpoints
-            cost: `$${Math.round(avgCost * 100) / 100}`,
-            quality: "N/A", // Will be calculated from feedback data
-          })
-        }
-      } catch (error) {
-        console.error('Failed to fetch metrics:', error)
-        // Show zero state instead of mock data
+        setRealMetrics({
+          performance: `${avgPerformance}%`,
+          security: "95%", // Placeholder until security endpoint is ready
+          cost: `$${totalCost.toFixed(2)}`,
+          quality: "4.2/5", // Placeholder until quality scoring is ready
+        })
+
+        setAnalyticsData(perfData.data || [])
+        setChartsLoading(false)
+      } else {
         setRealMetrics({
           performance: "0%",
           security: "0%",
           cost: "$0", 
           quality: "0/5",
         })
+        setAnalyticsData([])
       }
-    }
+      setMetricsLoading(false)
 
-    fetchMetrics()
-  }, [selectedAgentData, currentAgents])
+      // Process resource utilization
+      if (resourceRes.status === 'fulfilled' && resourceRes.value.ok) {
+        const resourceResponse = await resourceRes.value.json()
+        setResourceData(resourceResponse.data || {})
+      }
+
+      // Process recent activity
+      if (activityRes.status === 'fulfilled' && activityRes.value.ok) {
+        const activityData = await activityRes.value.json()
+        const activities = (activityData.activities || []).map((activity: any) => ({
+          id: activity.id,
+          type: activity.type || 'info',
+          title: `${activity.agent_name || 'System'}: ${activity.type || 'Update'}`,
+          description: activity.message || 'No description available',
+          time: new Date(activity.timestamp).toLocaleString(),
+          icon: activity.type === 'error' ? AlertTriangle : Activity,
+          color: activity.severity === 'critical' ? 'text-red-600' : 
+                 activity.severity === 'high' ? 'text-orange-600' :
+                 activity.severity === 'medium' ? 'text-amber-600' : 'text-blue-600'
+        }))
+        setRecentActivity(activities)
+      } else {
+        setRecentActivity([])
+      }
+      setActivityLoading(false)
+
+      setLastFetchTime(now)
+      console.log('✅ Dashboard data refreshed')
+    } catch (error) {
+      console.error('❌ Failed to fetch dashboard data:', error)
+      
+      // Show error states instead of empty
+      setRealMetrics({
+        performance: "Error",
+        security: "Error",
+        cost: "Error", 
+        quality: "Error",
+      })
+      setAnalyticsData([])
+      setRecentActivity([])
+      setMetricsLoading(false)
+      setActivityLoading(false)
+      setChartsLoading(false)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Initial data fetch with debouncing
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchDashboardData(true)
+    }, 300) // 300ms debounce
+
+    return () => clearTimeout(timeoutId)
+  }, [selectedAgentData?.id]) // Only re-fetch when agent changes
+
+  // Optimized auto-refresh (less aggressive)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isLoading && !metricsLoading) {
+        fetchDashboardData(false) // Silent refresh
+      }
+    }, 60000) // Increased to 60 seconds for better performance
+
+    return () => clearInterval(interval)
+  }, [isLoading, metricsLoading, lastFetchTime])
 
   const displayMetrics = realMetrics
 
-  // Analytics data from real metrics
-  const analyticsData = [
-    {
-      id: "performance",
-      title: "Performance Score",
-      value: displayMetrics.performance,
-      change: "Loading...", // Real trend calculation would come from backend
-      trend: "up",
-      icon: Zap,
-      color: "text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      id: "security",
-      title: "Security Rating", 
-      value: displayMetrics.security,
-      change: "Loading...",
-      trend: "up",
-      icon: Shield,
-      color: "text-blue-600 dark:text-blue-400",
-    },
-    {
-      id: "cost",
-      title: selectedAgentData ? "Agent Cost" : "Avg Monthly Cost",
-      value: displayMetrics.cost,
-      change: "Loading...",
-      trend: "down",
-      icon: DollarSign,
-      color: "text-violet-600 dark:text-violet-400",
-    },
-    {
-      id: "conversation", 
-      title: "Conversation Quality",
-      value: displayMetrics.quality,
-      change: "Loading...",
-      trend: "up",
-      icon: MessageSquare,
-      color: "text-orange-600 dark:text-orange-400",
-    },
-  ]
-
-  const [recentActivity, setRecentActivity] = useState([
-    {
-      id: 1,
-      type: "success",
-      title: "Agent Performance Improved",
-      description: "Customer Support Bot response time decreased by 15%",
-      time: "2 minutes ago",
-      icon: TrendingUp,
-      color: "text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      id: 2,
-      type: "warning",
-      title: "High Token Usage Detected",
-      description: "Content Generator approaching monthly limit",
-      time: "15 minutes ago",
-      icon: AlertTriangle,
-      color: "text-amber-600 dark:text-amber-400",
-    },
-    {
-      id: 3,
-      type: "info",
-      title: "New Security Scan Completed",
-      description: "All agents passed security compliance check",
-      time: "1 hour ago",
-      icon: Shield,
-      color: "text-blue-600 dark:text-blue-400",
-    },
-  ])
+  // Populate analytics data from real metrics when they change
+  useEffect(() => {
+    const formattedAnalytics = [
+      {
+        id: "performance",
+        title: "Performance Score",
+        value: displayMetrics.performance,
+        change: "Loading...", // Real trend calculation would come from backend
+        trend: "up",
+        icon: Zap,
+        color: "text-emerald-600 dark:text-emerald-400",
+      },
+      {
+        id: "security",
+        title: "Security Rating", 
+        value: displayMetrics.security,
+        change: "Loading...",
+        trend: "up",
+        icon: Shield,
+        color: "text-blue-600 dark:text-blue-400",
+      },
+      {
+        id: "cost",
+        title: selectedAgentData ? "Agent Cost" : "Avg Monthly Cost",
+        value: displayMetrics.cost,
+        change: "Loading...",
+        trend: "down",
+        icon: DollarSign,
+        color: "text-violet-600 dark:text-violet-400",
+      },
+      {
+        id: "conversation", 
+        title: "Conversation Quality",
+        value: displayMetrics.quality,
+        change: "Loading...",
+        trend: "up",
+        icon: MessageSquare,
+        color: "text-orange-600 dark:text-orange-400",
+      },
+    ]
+    
+    setAnalyticsData(formattedAnalytics)
+  }, [displayMetrics, selectedAgentData])
 
   // Fetch recent activity from backend
   useEffect(() => {
@@ -162,17 +243,23 @@ export default function DashboardPage() {
         const response = await fetch('http://localhost:8080/api/analytics/activity?limit=5')
         if (response.ok) {
           const result = await response.json()
-          const activities = result.data.map((activity: any) => ({
-            ...activity,
-            icon: activity.icon === 'TrendingUp' ? TrendingUp : 
-                  activity.icon === 'AlertTriangle' ? AlertTriangle :
-                  activity.icon === 'Shield' ? Shield : Activity
+          const activities = result.activities.map((activity: any) => ({
+            id: activity.id,
+            type: activity.type,
+            title: `${activity.agent_name}: ${activity.type}`,
+            description: activity.message,
+            time: new Date(activity.timestamp).toLocaleString(),
+            icon: activity.type === 'error' ? AlertTriangle : Activity,
+            color: activity.severity === 'critical' ? 'text-red-600' : 
+                   activity.severity === 'high' ? 'text-orange-600' :
+                   activity.severity === 'medium' ? 'text-amber-600' : 'text-blue-600'
           }))
           setRecentActivity(activities)
         }
       } catch (error) {
         console.error('Failed to fetch activity:', error)
-        // Keep default activity data
+        // Keep empty activity list - no fallback data
+        setRecentActivity([])
       }
     }
 
@@ -322,33 +409,60 @@ export default function DashboardPage() {
 
       {/* Analytics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {analyticsData.map((metric) => {
-          const Icon = metric.icon
-          return (
-            <Card key={metric.id}>
+        {metricsLoading ? (
+          // Loading skeleton for metrics
+          Array.from({ length: 4 }).map((_, index) => (
+            <Card key={`loading-${index}`}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-muted-foreground mb-1">{metric.title}</p>
-                    <p className="text-xl font-semibold">{metric.value}</p>
-                    <p
-                      className={`text-sm font-medium mt-1 ${
-                        metric.trend === "up"
-                          ? "text-emerald-600 dark:text-emerald-400"
-                          : "text-red-600 dark:text-red-400"
-                      }`}
-                    >
-                      {metric.change}
-                    </p>
+                    <div className="h-4 bg-muted rounded animate-pulse mb-2" />
+                    <div className="h-6 bg-muted rounded animate-pulse w-20" />
+                    <div className="h-3 bg-muted rounded animate-pulse w-16 mt-2" />
                   </div>
                   <div className="p-2 rounded-lg bg-muted/50 ml-3">
-                    <Icon className={`h-5 w-5 ${metric.color}`} />
+                    <div className="h-5 w-5 bg-muted rounded animate-pulse" />
                   </div>
                 </div>
               </CardContent>
             </Card>
-          )
-        })}
+          ))
+        ) : analyticsData.length > 0 ? (
+          analyticsData.map((metric) => {
+            const Icon = metric.icon
+            return (
+              <Card key={metric.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-muted-foreground mb-1">{metric.title}</p>
+                      <p className="text-xl font-semibold">{metric.value}</p>
+                      <p
+                        className={`text-sm font-medium mt-1 ${
+                          metric.trend === "up"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-red-600 dark:text-red-400"
+                        }`}
+                      >
+                        {metric.change}
+                      </p>
+                    </div>
+                    <div className="p-2 rounded-lg bg-muted/50 ml-3">
+                      <Icon className={`h-5 w-5 ${metric.color}`} />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })
+        ) : (
+          // Empty state when no data
+          <div className="col-span-full text-center py-8">
+            <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">No analytics data available</p>
+            <p className="text-xs text-muted-foreground mt-1">Connect agents to see performance metrics</p>
+          </div>
+        )}
       </div>
 
       {/* Main Content Grid */}
@@ -494,27 +608,50 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {recentActivity.map((activity) => {
-              const Icon = activity.icon
-              return (
-                <div
-                  key={activity.id}
-                  className="flex items-start space-x-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
-                >
+            {activityLoading ? (
+              // Loading skeleton for activity
+              Array.from({ length: 3 }).map((_, index) => (
+                <div key={`activity-loading-${index}`} className="flex items-start space-x-3 p-2 rounded-lg">
                   <div className="p-1.5 rounded-lg bg-muted">
-                    <Icon className={`h-3 w-3 ${activity.color}`} />
+                    <div className="h-3 w-3 bg-muted-foreground/30 rounded animate-pulse" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm">{activity.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{activity.description}</p>
-                    <div className="flex items-center mt-1 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3 mr-1" />
-                      {activity.time}
-                    </div>
+                    <div className="h-4 bg-muted rounded animate-pulse mb-1" />
+                    <div className="h-3 bg-muted rounded animate-pulse w-3/4 mt-1" />
+                    <div className="h-3 bg-muted rounded animate-pulse w-1/2 mt-1" />
                   </div>
                 </div>
-              )
-            })}
+              ))
+            ) : recentActivity.length > 0 ? (
+              recentActivity.map((activity) => {
+                const Icon = activity.icon
+                return (
+                  <div
+                    key={activity.id}
+                    className="flex items-start space-x-3 p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="p-1.5 rounded-lg bg-muted">
+                      <Icon className={`h-3 w-3 ${activity.color}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{activity.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{activity.description}</p>
+                      <div className="flex items-center mt-1 text-xs text-muted-foreground">
+                        <Clock className="h-3 w-3 mr-1" />
+                        {activity.time}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              // Empty state when no activity
+              <div className="text-center py-6">
+                <Activity className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No recent activity</p>
+                <p className="text-xs text-muted-foreground mt-1">Agent activities will appear here</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

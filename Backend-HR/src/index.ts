@@ -7,6 +7,7 @@ import { agentRoutes } from './routes/agents';
 import { mockDataRoutes } from './routes/mock-data';
 import { frontendApiRoutes } from './routes/frontend-api';
 import { analyticsApiRoutes } from './routes/analytics-api';
+import { authRoutes } from './routes/auth';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import { initializeDatabase } from './lib/database-init';
@@ -98,6 +99,7 @@ app.use('/api/agents', agentRoutes);
 app.use('/api/mock', mockDataRoutes);
 app.use('/api/frontend', frontendApiRoutes);
 app.use('/api/analytics', analyticsApiRoutes);
+app.use('/api/auth', authRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

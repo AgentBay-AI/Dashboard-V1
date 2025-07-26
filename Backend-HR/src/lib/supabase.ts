@@ -3,12 +3,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Supabase configuration
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
+// Supabase configuration - Use the real Supabase URL from Google OAuth config
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://xedlnzqfwdgkummqeauv.supabase.co';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-service-key';
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn('⚠️  Supabase environment variables not set. Using mock values for development.');
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('🔴 CRITICAL: SUPABASE_SERVICE_ROLE_KEY environment variable is missing!');
+  console.error('Please create Backend-HR/.env with your Supabase service role key');
+  console.warn('⚠️  Using placeholder key - database operations may fail');
 }
 
 export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
@@ -17,6 +19,28 @@ export const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     persistSession: false
   }
 });
+
+// Test connection function
+export async function testConnection(): Promise<boolean> {
+  try {
+    console.log('🔄 Testing Supabase connection...');
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('count(*)')
+      .limit(1);
+    
+    if (error) {
+      console.error('🔴 Supabase connection test failed:', error.message);
+      return false;
+    }
+    
+    console.log('✅ Supabase connection successful');
+    return true;
+  } catch (error) {
+    console.error('🔴 Supabase connection failed:', error);
+    return false;
+  }
+}
 
 // Database types for TypeScript
 export interface Database {

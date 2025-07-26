@@ -48,50 +48,94 @@ const AgentContext = createContext<AgentContextType | undefined>(undefined)
 export function AgentProvider({ children }: { children: ReactNode }) {
   const [organizations, setOrganizations] = useState<Organization[]>([])
   const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null)
-
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(false)
+  const [lastFetchTime, setLastFetchTime] = useState<number>(0)
 
-  // Fetch data from backend
-  const fetchData = async () => {
+  // Cache duration: 5 minutes
+  const CACHE_DURATION = 5 * 60 * 1000
+
+  // Optimized fetch function with caching
+  const fetchData = async (force = false) => {
+    const now = Date.now()
+    
+    // Skip if recently fetched (unless forced)
+    if (!force && now - lastFetchTime < CACHE_DURATION) {
+      return
+    }
+
     try {
       setLoading(true)
       const backendUrl = 'http://localhost:8080'
       
-      // Fetch organizations
-      const orgsResponse = await fetch(`${backendUrl}/api/frontend/organizations`)
-      if (orgsResponse.ok) {
-        const orgsData = await orgsResponse.json()
+      // Use Promise.allSettled for better error handling
+      const [orgsResult, agentsResult] = await Promise.allSettled([
+        fetch(`${backendUrl}/api/frontend/organizations`, {
+          signal: AbortSignal.timeout(8000) // 8 second timeout
+        }),
+        fetch(`${backendUrl}/api/frontend/agents`, {
+          signal: AbortSignal.timeout(8000)
+        })
+      ])
+
+      // Process organizations
+      if (orgsResult.status === 'fulfilled' && orgsResult.value.ok) {
+        const orgsData = await orgsResult.value.json()
         setOrganizations(orgsData.organizations || [])
+        
+        // Set current organization if none selected
         if (orgsData.organizations && orgsData.organizations.length > 0 && !currentOrganization) {
           setCurrentOrganization(orgsData.organizations[0])
         }
+      } else {
+        console.warn('Failed to fetch organizations')
+        setOrganizations([])
       }
 
-      // Fetch agents  
-      const agentsResponse = await fetch(`${backendUrl}/api/frontend/agents`)
-      if (agentsResponse.ok) {
-        const agentsData = await agentsResponse.json()
+      // Process agents
+      if (agentsResult.status === 'fulfilled' && agentsResult.value.ok) {
+        const agentsData = await agentsResult.value.json()
         setAgents(agentsData.agents || [])
+      } else {
+        console.warn('Failed to fetch agents')
+        setAgents([])
       }
       
+      setLastFetchTime(now)
+      console.log('✅ Agent provider data refreshed')
     } catch (error) {
       console.error('Failed to fetch data from backend:', error)
       
-      // No fallback data - everything must come from backend
-      // This ensures the UI only shows real data
-      setOrganizations([])
-      setAgents([])
-      setCurrentOrganization(null)
+      // Only clear data on first load failure
+      if (organizations.length === 0 && agents.length === 0) {
+        setOrganizations([])
+        setAgents([])
+        setCurrentOrganization(null)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  // Load data on component mount
+  // Load data on component mount with debouncing
   useEffect(() => {
-    fetchData()
+    const timeoutId = setTimeout(() => {
+      fetchData(true)
+    }, 100) // Small delay to prevent multiple rapid calls
+
+    return () => clearTimeout(timeoutId)
   }, [])
+
+  // Auto-refresh every 5 minutes (much less aggressive)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!loading) {
+        fetchData(false)
+      }
+    }, 5 * 60 * 1000) // 5 minutes
+
+    return () => clearInterval(interval)
+  }, [loading, lastFetchTime])
 
   const addOrganization = (org: Organization) => {
     setOrganizations((prev) => [...prev, org])

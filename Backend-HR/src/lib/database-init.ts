@@ -1,17 +1,15 @@
-import { supabase } from './supabase'
+import { supabase, testConnection } from './supabase'
 import { logger } from '../utils/logger'
 
 export async function initializeDatabase() {
   try {
     logger.info('🚀 Initializing database...')
 
-    // Test if we can connect to Supabase
-    const { data: connectionTest, error: connectionError } = await supabase
-      .from('agents')
-      .select('count', { count: 'exact', head: true })
-
-    if (connectionError) {
-      logger.warn('⚠️  Database connection failed, using empty mode:', connectionError.message)
+    // Test connection using dedicated function
+    const connectionSuccessful = await testConnection()
+    
+    if (!connectionSuccessful) {
+      logger.warn('⚠️  Database connection failed, using empty mode')
       return false
     }
 
