@@ -25,3 +25,25 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Google OAuth and API credentials
+client_secret_*.json
+*client_secret*.json
+service-account-*.json
+*service-account*.json
+*.p12
+*.pem
+*.key
+*credentials*.json
+*auth*.json
+
+# API Keys and secrets
+*api_key*
+*secret*
+*token*
+*.credentials
+
+# Cloud provider configs
+.gcloud/
+.aws/
+.azure/
