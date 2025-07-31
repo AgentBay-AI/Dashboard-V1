@@ -8,6 +8,9 @@ import { mockDataRoutes } from './routes/mock-data';
 import { frontendApiRoutes } from './routes/frontend-api';
 import { analyticsApiRoutes } from './routes/analytics-api';
 import { authRoutes } from './routes/auth';
+import { agentTrackingRoutes } from './routes/agent-tracking';
+import { dashboardRoutes } from './routes/dashboard';
+import { apiKeyRoutes } from './routes/api-keys';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import { initializeDatabase } from './lib/database-init';
@@ -88,7 +91,10 @@ app.get('/', (req, res) => {
       health: '/health',
       agents: '/api/agents',
       metrics: '/api/agents/log',
-      health_log: '/api/agents/health'
+      health_log: '/api/agents/health',
+      sdk_tracking: '/api/sdk',
+      dashboard: '/api/dashboard',
+      admin: '/api/admin'
     },
     docs: 'https://github.com/your-repo/ai-hr-agent'
   });
@@ -101,12 +107,17 @@ app.use('/api/frontend', frontendApiRoutes);
 app.use('/api/analytics', analyticsApiRoutes);
 app.use('/api/auth', authRoutes);
 
+// New AI Agent Tracking API routes
+app.use('/api/sdk', agentTrackingRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/admin/api-keys', apiKeyRoutes);
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({
     error: 'Endpoint not found',
     message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
-    availableEndpoints: ['/health', '/api/agents', '/api/agents/log', '/api/agents/health']
+    availableEndpoints: ['/health', '/api/agents', '/api/sdk', '/api/dashboard', '/api/admin/api-keys']
   });
 });
 

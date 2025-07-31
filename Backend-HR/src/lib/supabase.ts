@@ -340,6 +340,279 @@ export interface Database {
           created_at?: string;
         };
       };
+      // New SDK Agent Tracking Tables
+      sdk_agents: {
+        Row: {
+          agent_id: string;
+          status: 'active' | 'idle' | 'error' | 'maintenance';
+          client_id: string;
+          last_activity: string;
+          metadata: any;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          agent_id: string;
+          status?: 'active' | 'idle' | 'error' | 'maintenance';
+          client_id: string;
+          last_activity?: string;
+          metadata?: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          agent_id?: string;
+          status?: 'active' | 'idle' | 'error' | 'maintenance';
+          client_id?: string;
+          last_activity?: string;
+          metadata?: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      conversations: {
+        Row: {
+          session_id: string;
+          agent_id: string;
+          run_id: string;
+          user_id: string;
+          client_id: string;
+          start_time: string;
+          end_time: string;
+          last_activity: string;
+          status: 'active' | 'ended' | 'expired' | 'failed';
+          outcome: 'resolved' | 'escalated' | 'failed' | 'timeout';
+          quality_score: 'poor' | 'fair' | 'good' | 'excellent';
+          response_time_ms: number;
+          user_satisfaction: number;
+          metadata: any;
+          security_flags: any;
+          created_at: string;
+        };
+        Insert: {
+          session_id: string;
+          agent_id?: string;
+          run_id?: string;
+          user_id?: string;
+          client_id: string;
+          start_time?: string;
+          end_time?: string;
+          last_activity?: string;
+          status?: 'active' | 'ended' | 'expired' | 'failed';
+          outcome?: 'resolved' | 'escalated' | 'failed' | 'timeout';
+          quality_score?: 'poor' | 'fair' | 'good' | 'excellent';
+          response_time_ms?: number;
+          user_satisfaction?: number;
+          metadata?: any;
+          security_flags?: any;
+          created_at?: string;
+        };
+        Update: {
+          session_id?: string;
+          agent_id?: string;
+          run_id?: string;
+          user_id?: string;
+          client_id?: string;
+          start_time?: string;
+          end_time?: string;
+          last_activity?: string;
+          status?: 'active' | 'ended' | 'expired' | 'failed';
+          outcome?: 'resolved' | 'escalated' | 'failed' | 'timeout';
+          quality_score?: 'poor' | 'fair' | 'good' | 'excellent';
+          response_time_ms?: number;
+          user_satisfaction?: number;
+          metadata?: any;
+          security_flags?: any;
+          created_at?: string;
+        };
+      };
+      llm_usage: {
+        Row: {
+          id: number;
+          timestamp: string;
+          provider: 'openai' | 'anthropic' | 'gemini';
+          model: string;
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+          session_id: string;
+          agent_id: string;
+          client_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          timestamp?: string;
+          provider: 'openai' | 'anthropic' | 'gemini';
+          model: string;
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+          session_id?: string;
+          agent_id?: string;
+          client_id?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          timestamp?: string;
+          provider?: 'openai' | 'anthropic' | 'gemini';
+          model?: string;
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+          session_id?: string;
+          agent_id?: string;
+          client_id?: string;
+          created_at?: string;
+        };
+      };
+      security_events: {
+        Row: {
+          id: number;
+          event_type: 'tamper_detected' | 'unclosed_sessions' | 'pii_detected';
+          timestamp: string;
+          agent_id: string;
+          client_id: string;
+          severity: 'low' | 'medium' | 'high' | 'critical';
+          event_data: any;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          event_type: 'tamper_detected' | 'unclosed_sessions' | 'pii_detected';
+          timestamp?: string;
+          agent_id?: string;
+          client_id: string;
+          severity?: 'low' | 'medium' | 'high' | 'critical';
+          event_data?: any;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          event_type?: 'tamper_detected' | 'unclosed_sessions' | 'pii_detected';
+          timestamp?: string;
+          agent_id?: string;
+          client_id?: string;
+          severity?: 'low' | 'medium' | 'high' | 'critical';
+          event_data?: any;
+          created_at?: string;
+        };
+      };
+      compliance_audit: {
+        Row: {
+          id: number;
+          session_id: string;
+          timestamp: string;
+          event_type: string;
+          compliance_flags: any;
+          policy_violations: any;
+          hash_chain: string;
+          current_hash: string;
+          client_id: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          session_id: string;
+          timestamp?: string;
+          event_type: string;
+          compliance_flags?: any;
+          policy_violations?: any;
+          hash_chain?: string;
+          current_hash: string;
+          client_id?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          session_id?: string;
+          timestamp?: string;
+          event_type?: string;
+          compliance_flags?: any;
+          policy_violations?: any;
+          hash_chain?: string;
+          current_hash?: string;
+          client_id?: string;
+          created_at?: string;
+        };
+      };
+      failed_sessions: {
+        Row: {
+          id: number;
+          session_id: string;
+          agent_id: string;
+          timestamp: string;
+          client_id: string;
+          failure_reason: string;
+          error_details: any;
+          created_at: string;
+        };
+        Insert: {
+          id?: number;
+          session_id: string;
+          agent_id?: string;
+          timestamp?: string;
+          client_id: string;
+          failure_reason: string;
+          error_details?: any;
+          created_at?: string;
+        };
+        Update: {
+          id?: number;
+          session_id?: string;
+          agent_id?: string;
+          timestamp?: string;
+          client_id?: string;
+          failure_reason?: string;
+          error_details?: any;
+          created_at?: string;
+        };
+      };
+      api_keys: {
+        Row: {
+          id: number;
+          key_hash: string;
+          client_id: string;
+          client_name: string;
+          created_by: string;
+          permissions: any;
+          rate_limit_per_minute: number;
+          is_active: boolean;
+          expires_at: string;
+          last_used_at: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: number;
+          key_hash: string;
+          client_id: string;
+          client_name?: string;
+          created_by?: string;
+          permissions?: any;
+          rate_limit_per_minute?: number;
+          is_active?: boolean;
+          expires_at?: string;
+          last_used_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: number;
+          key_hash?: string;
+          client_id?: string;
+          client_name?: string;
+          created_by?: string;
+          permissions?: any;
+          rate_limit_per_minute?: number;
+          is_active?: boolean;
+          expires_at?: string;
+          last_used_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
   };
 } 
