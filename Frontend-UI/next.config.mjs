@@ -9,12 +9,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Minimal config to prevent module errors
-  swcMinify: false, // Disable to prevent issues
-  // Environment variables
-  env: {
-    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8080',
-  },
 }
 
 export default nextConfig
