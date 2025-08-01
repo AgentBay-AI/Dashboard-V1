@@ -3,12 +3,46 @@ import axios from 'axios';
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080/api';
 const API_KEY = import.meta.env.VITE_API_KEY || 'test_key_12345';
 
+console.log('API Configuration:', {
+  API_BASE_URL,
+  API_KEY: API_KEY ? `${API_KEY.substring(0, 10)}...` : 'NOT SET',
+  env: import.meta.env
+});
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${API_KEY}`,
   },
+});
+
+// Add request interceptor for debugging
+api.interceptors.request.use((config: any) => {
+  console.log('Making API request:', {
+    url: config.url,
+    baseURL: config.baseURL,
+    headers: {
+      Authorization: config.headers.Authorization ? `${config.headers.Authorization.substring(0, 20)}...` : 'NOT SET'
+    }
+  });
+  return config;
+}, (error) => {
+  console.error('Request interceptor error:', error);
+  return Promise.reject(error);
+});
+
+// Add response interceptor for debugging
+api.interceptors.response.use((response) => {
+  console.log('API response received:', response.status, response.config.url);
+  return response;
+}, (error) => {
+  console.error('API response error:', {
+    status: error.response?.status,
+    url: error.config?.url,
+    message: error.message
+  });
+  return Promise.reject(error);
 });
 
 // API response interfaces
@@ -119,39 +153,84 @@ export interface TopModel {
   request_count: number;
 }
 
+export interface Agent {
+  agent_id: string;
+  status: string;
+  registration_time: string;
+  sdk_version?: string;
+  metadata: Record<string, any>;
+}
+
+export interface AgentActivity {
+  agent_id: string;
+  action: string;
+  timestamp: string;
+  details: Record<string, any>;
+  duration: number | null;
+}
+
+export interface OperationsOverview {
+  active_agents: Agent[];
+  status_distribution: Record<string, number>;
+  recent_activity: AgentActivity[];
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  error?: string;
+}
+
 export const apiClient = {
   // Dashboard overview
   getDashboardOverview: async (): Promise<DashboardOverview> => {
     try {
-      const { data } = await api.get('/dashboard/overview');
-      return {
+      console.log('Fetching dashboard data...');
+      
+      // Fetch data from multiple endpoints
+      const [operationsResponse, llmResponse] = await Promise.all([
+        api.get('/agents/operations/overview'),
+        api.get('/llm-usage/aggregated?timeframe=24h')
+      ]);
+
+      console.log('Operations response:', operationsResponse.data);
+      console.log('LLM response:', llmResponse.data);
+
+      const operations = operationsResponse.data.data;
+      const llmUsage = llmResponse.data;
+
+      const dashboardData = {
         agents: {
-          active: data.total_agents || 0,
-          total: data.total_agents || 0,
-          successRate: data.avg_success_rate || 0,
-          avgResponseTime: data.avg_response_time || 0
+          active: operations.active_agents?.length || 0,
+          total: operations.active_agents?.length || 0,
+          successRate: 95, // Mock for now
+          avgResponseTime: 250 // Mock for now
         },
         security: {
-          threats: data.security_events || 0,
-          riskLevel: data.security_events > 5 ? 'High' : data.security_events > 2 ? 'Medium' : 'Low',
-          complianceScore: 95, // Default value
-          security_flags: data.security?.security_flags || {
+          threats: 0, // Mock for now
+          riskLevel: 'Low' as const,
+          complianceScore: 95,
+          security_flags: {
             pii_detected: 0,
             tamper_detected: 0,
             compliance_violation: 0
           }
         },
         costs: {
-          totalTokens: data.total_tokens || 0,
-          monthlyCost: data.total_cost || 0,
-          costPerAgent: data.total_agents > 0 ? (data.total_cost / data.total_agents) : 0
+          totalTokens: (llmUsage.summary?.total_input_tokens || 0) + (llmUsage.summary?.total_output_tokens || 0),
+          monthlyCost: llmUsage.summary?.total_cost || 0,
+          costPerAgent: operations.active_agents?.length > 0 ? 
+            (llmUsage.summary?.total_cost || 0) / operations.active_agents.length : 0
         },
         system: {
-          cpu: Math.floor(Math.random() * 30) + 50, // Mock data
+          cpu: Math.floor(Math.random() * 30) + 50,
           memory: Math.floor(Math.random() * 30) + 60,
           uptime: 99.9
         }
       };
+
+      console.log('Dashboard data processed:', dashboardData);
+      return dashboardData;
     } catch (error) {
       console.error('Failed to fetch dashboard overview:', error);
       // Return mock data as fallback
@@ -237,6 +316,54 @@ export const apiClient = {
     getPricingInfo: async () => {
       const { data } = await api.get('/llm-usage/pricing-info');
       return data;
+    }
+  },
+
+  agents: {
+    register: async (data: Omit<Agent, 'status'>) => {
+      const response = await api.post<ApiResponse<Agent>>('/agents/register', data);
+      return response.data;
+    },
+
+    updateStatus: async (agentId: string, status: string, metadata?: Record<string, any>) => {
+      const response = await api.post<ApiResponse<Agent>>('/agents/status', {
+        agent_id: agentId,
+        status,
+        timestamp: new Date().toISOString(),
+        metadata
+      });
+      return response.data;
+    },
+
+    logActivity: async (agentId: string, action: string, details?: Record<string, any>, duration?: number) => {
+      const response = await api.post<ApiResponse<AgentActivity>>('/agents/activity', {
+        agent_id: agentId,
+        action,
+        timestamp: new Date().toISOString(),
+        details: details || {},
+        duration: duration || null
+      });
+      return response.data;
+    },
+
+    getActive: async () => {
+      const response = await api.get<ApiResponse<Agent[]>>('/agents/active');
+      return response.data;
+    },
+
+    getStatus: async (agentId: string) => {
+      const response = await api.get<ApiResponse<Agent>>(`/agents/${agentId}/status`);
+      return response.data;
+    },
+
+    getActivity: async (agentId: string, limit?: number) => {
+      const response = await api.get<ApiResponse<AgentActivity[]>>(`/agents/${agentId}/activity${limit ? `?limit=${limit}` : ''}`);
+      return response.data;
+    },
+
+    getOperationsOverview: async () => {
+      const response = await api.get<ApiResponse<OperationsOverview>>('/agents/operations/overview');
+      return response.data;
     }
   }
 }; 

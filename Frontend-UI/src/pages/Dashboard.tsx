@@ -30,6 +30,8 @@ import {
   BarChart3,
   PieChart
 } from "lucide-react";
+import { ActiveAgents } from "@/components/dashboard/active-agents";
+import { AgentActivityLog } from "@/components/dashboard/agent-activity";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
@@ -69,18 +71,28 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchDashboardData = async () => {
       try {
+        console.log('Dashboard: Starting data fetch...');
         setLoading(true);
+        
         const [dashboardOverview, llmUsage, topModelsData] = await Promise.all([
           apiClient.getDashboardOverview(),
-          apiClient.llm.getUsageAggregated('30d'),  // Use 30 days to match the top models endpoint
+          apiClient.llm.getUsageAggregated('24h'),  // Changed to 24h to match backend
           apiClient.llm.getTopModels(10, 'cost')
         ]);
+        
+        console.log('Dashboard: Received data:', {
+          dashboardOverview,
+          llmUsage,
+          topModelsData
+        });
         
         setDashboardData(dashboardOverview);
         setLlmUsageData(llmUsage);
         setTopModels(topModelsData.top_models);
+        
+        console.log('Dashboard: State updated');
       } catch (error) {
-        console.error('Failed to fetch dashboard data:', error);
+        console.error('Dashboard: Failed to fetch data:', error);
       } finally {
         setLoading(false);
       }
@@ -268,31 +280,8 @@ const Dashboard = () => {
           {/* Agents Tab */}
           <TabsContent value="agents" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Users className="mr-2 h-5 w-5" />
-                    Agent Performance Metrics
-                  </CardTitle>
-                  <CardDescription>Individual agent success rates and response times</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <PerformanceChart />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <BarChart3 className="mr-2 h-5 w-5" />
-                    Agent Activity
-                  </CardTitle>
-                  <CardDescription>Sessions handled by each agent</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <AgentActivityChart />
-                </CardContent>
-              </Card>
+              <ActiveAgents />
+              <AgentActivityLog />
             </div>
 
             <Card>

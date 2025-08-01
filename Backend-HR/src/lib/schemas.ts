@@ -9,25 +9,29 @@ const sessionIdSchema = z.string().min(1);
 // Agent Operations Schemas
 export const agentRegisterSchema = z.object({
   agent_id: agentIdSchema,
-  timestamp: timestampSchema,
+  registration_time: timestampSchema,
   client_id: clientIdSchema,
-  metadata: z.object({
-    version: z.string().optional(),
-    environment: z.enum(['development', 'staging', 'production']).optional(),
-    capabilities: z.array(z.string()).optional()
-  }).optional()
+  sdk_version: z.string().optional(),
+  metadata: z.record(z.any()).optional().default({})
 });
 
-export const agentStatusSchema = z.object({
+export const agentStatusUpdateSchema = z.object({
   agent_id: agentIdSchema,
-  status: z.enum(['active', 'idle', 'error', 'maintenance']),
-  timestamp: timestampSchema,
   client_id: clientIdSchema,
-  metadata: z.object({
-    cpu_usage: z.number().min(0).max(100).optional(),
-    memory_usage: z.number().min(0).optional(),
-    last_activity: timestampSchema.optional()
-  }).optional()
+  status: z.enum(['active', 'idle', 'busy', 'error', 'offline', 'initializing']),
+  timestamp: timestampSchema,
+  previous_status: z.string().nullable(),
+  metadata: z.record(z.any()).optional().default({})
+});
+
+// Agent activity schema
+export const agentActivitySchema = z.object({
+  agent_id: agentIdSchema,
+  client_id: clientIdSchema,
+  action: z.string().min(1),
+  timestamp: timestampSchema,
+  details: z.record(z.any()).optional().default({}),
+  duration: z.number().nullable()
 });
 
 // Conversation Schemas
@@ -197,7 +201,7 @@ export const createApiKeySchema = z.object({
 
 // Type exports for TypeScript
 export type AgentRegister = z.infer<typeof agentRegisterSchema>;
-export type AgentStatus = z.infer<typeof agentStatusSchema>;
+export type AgentStatus = z.infer<typeof agentStatusUpdateSchema>;
 export type ConversationStart = z.infer<typeof conversationStartSchema>;
 export type ConversationEnd = z.infer<typeof conversationEndSchema>;
 export type ConversationResume = z.infer<typeof conversationResumeSchema>;

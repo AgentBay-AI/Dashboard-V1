@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>API Connection Test</h1>
+    <div id="results"></div>
+    
+    <script>
+        const API_KEY = 'd1d604186fcb886e85f1b20eb64524c554365bbd042349c4e94cfa71cccde462';
+        const BASE_URL = 'http://localhost:8080/api';
+        
+        async function testAPI() {
+            const resultsDiv = document.getElementById('results');
+            
+            try {
+                // Test operations overview
+                console.log('Testing operations overview...');
+                const response = await fetch(`${BASE_URL}/agents/operations/overview`, {
+                    headers: {
+                        'Authorization': `Bearer ${API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Operations data:', data);
+                
+                resultsDiv.innerHTML = `
+                    <h2>✅ API Connection Successful!</h2>
+                    <h3>Active Agents: ${data.data.active_agents.length}</h3>
+                    <h3>Status Distribution:</h3>
+                    <pre>${JSON.stringify(data.data.status_distribution, null, 2)}</pre>
+                    <h3>Recent Activity:</h3>
+                    <pre>${JSON.stringify(data.data.recent_activity, null, 2)}</pre>
+                `;
+                
+                // Test LLM usage
+                const llmResponse = await fetch(`${BASE_URL}/llm-usage/aggregated?timeframe=24h`, {
+                    headers: {
+                        'Authorization': `Bearer ${API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (llmResponse.ok) {
+                    const llmData = await llmResponse.json();
+                    console.log('LLM data:', llmData);
+                    
+                    resultsDiv.innerHTML += `
+                        <h3>LLM Usage:</h3>
+                        <p>Total Cost: $${llmData.summary.total_cost}</p>
+                        <p>Total Tokens: ${llmData.summary.total_input_tokens + llmData.summary.total_output_tokens}</p>
+                        <pre>${JSON.stringify(llmData.summary, null, 2)}</pre>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('API test failed:', error);
+                resultsDiv.innerHTML = `
+                    <h2>❌ API Connection Failed!</h2>
+                    <p>Error: ${error.message}</p>
+                    <p>Make sure:</p>
+                    <ul>
+                        <li>Backend server is running on port 8080</li>
+                        <li>CORS is properly configured</li>
+                        <li>API key is valid</li>
+                    </ul>
+                `;
+            }
+        }
+        
+        // Run the test when page loads
+        testAPI();
+    </script>
+</body>
+</html> 

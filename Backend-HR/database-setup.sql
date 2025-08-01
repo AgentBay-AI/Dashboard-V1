@@ -4,6 +4,83 @@
 -- Enable necessary extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
+-- Drop existing tables and triggers
+DROP TRIGGER IF EXISTS update_agents_updated_at ON agents;
+DROP TABLE IF EXISTS agent_activity;
+DROP TABLE IF EXISTS agent_status;
+DROP TABLE IF EXISTS agents;
+DROP FUNCTION IF EXISTS update_updated_at_column();
+
+-- Create trigger function
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Agents table
+CREATE TABLE IF NOT EXISTS agents (
+  id BIGSERIAL PRIMARY KEY,
+  agent_id VARCHAR(255) NOT NULL UNIQUE,
+  client_id VARCHAR(255) NOT NULL,
+  registration_time TIMESTAMP WITH TIME ZONE NOT NULL,
+  sdk_version VARCHAR(50),
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  trace_id VARCHAR(32),
+  span_id VARCHAR(16),
+  trace_context JSONB
+);
+
+-- Agent status history
+CREATE TABLE IF NOT EXISTS agent_status (
+  id BIGSERIAL PRIMARY KEY,
+  agent_id VARCHAR(255) NOT NULL REFERENCES agents(agent_id),
+  client_id VARCHAR(255) NOT NULL,
+  status VARCHAR(50) NOT NULL,
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+  previous_status VARCHAR(50),
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  trace_id VARCHAR(32),
+  span_id VARCHAR(16),
+  trace_context JSONB
+);
+
+-- Agent activity logs
+CREATE TABLE IF NOT EXISTS agent_activity (
+  id BIGSERIAL PRIMARY KEY,
+  agent_id VARCHAR(255) NOT NULL REFERENCES agents(agent_id),
+  client_id VARCHAR(255) NOT NULL,
+  action VARCHAR(255) NOT NULL,
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+  details JSONB DEFAULT '{}',
+  duration INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  trace_id VARCHAR(32),
+  span_id VARCHAR(16),
+  trace_context JSONB
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_agent_status_timestamp ON agent_status(timestamp);
+CREATE INDEX IF NOT EXISTS idx_agent_activity_timestamp ON agent_activity(timestamp);
+CREATE INDEX IF NOT EXISTS idx_agents_registration ON agents(registration_time);
+CREATE INDEX IF NOT EXISTS idx_agent_status_trace_id ON agent_status(trace_id);
+CREATE INDEX IF NOT EXISTS idx_agent_activity_trace_id ON agent_activity(trace_id);
+CREATE INDEX IF NOT EXISTS idx_agents_client_id ON agents(client_id);
+CREATE INDEX IF NOT EXISTS idx_agent_status_client_id ON agent_status(client_id);
+CREATE INDEX IF NOT EXISTS idx_agent_activity_client_id ON agent_activity(client_id);
+
+-- Create trigger for updated_at
+CREATE TRIGGER update_agents_updated_at
+    BEFORE UPDATE ON agents
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
 -- Create SDK Agents table
 CREATE TABLE IF NOT EXISTS sdk_agents (
   agent_id VARCHAR(255) PRIMARY KEY,
@@ -159,28 +236,6 @@ CREATE TABLE IF NOT EXISTS api_keys (
 CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
 CREATE INDEX IF NOT EXISTS idx_api_keys_client_id ON api_keys(client_id);
 CREATE INDEX IF NOT EXISTS idx_api_keys_is_active ON api_keys(is_active);
-
--- Create a function to automatically update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$ language 'plpgsql';
-
--- Create triggers for automatic timestamp updates
-DROP TRIGGER IF EXISTS update_sdk_agents_updated_at ON sdk_agents;
-CREATE TRIGGER update_sdk_agents_updated_at
-    BEFORE UPDATE ON sdk_agents
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-DROP TRIGGER IF EXISTS update_api_keys_updated_at ON api_keys;
-CREATE TRIGGER update_api_keys_updated_at
-    BEFORE UPDATE ON api_keys
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
 
 -- Enable Row Level Security (RLS) for better security
 ALTER TABLE sdk_agents ENABLE ROW LEVEL SECURITY;
