@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { supabase } from '../lib/supabase';
 import { logger } from '../utils/logger';
 import { authenticateApiKey, AuthenticatedRequest, requirePermission, validateSchema } from '../middleware/auth';
+import { addTraceContext, createSpan } from '../middleware/tracing';
+import { calculateTokenCost } from '../config/llm-pricing';
 import {
   agentRegisterSchema,
   agentStatusSchema,
@@ -170,21 +172,23 @@ router.post('/conversations/start',
     try {
       const { session_id, agent_id, timestamp, client_id, run_id, user_id, metadata, security_flags } = req.body;
 
-      // Insert conversation
+      // Insert conversation with trace context
+      const conversationData = addTraceContext({
+        session_id,
+        agent_id,
+        run_id,
+        user_id,
+        client_id: client_id || req.clientId,
+        start_time: timestamp,
+        last_activity: timestamp,
+        status: 'active',
+        metadata: metadata || {},
+        security_flags: security_flags || {}
+      }, req);
+
       const { data, error } = await supabase
         .from('conversations')
-        .insert({
-          session_id,
-          agent_id,
-          run_id,
-          user_id,
-          client_id: client_id || req.clientId,
-          start_time: timestamp,
-          last_activity: timestamp,
-          status: 'active',
-          metadata: metadata || {},
-          security_flags: security_flags || {}
-        })
+        .insert(conversationData)
         .select()
         .single();
 
@@ -227,20 +231,22 @@ router.post('/conversations/end',
     try {
       const { session_id, timestamp, client_id, outcome, quality_score, response_time_ms, user_satisfaction, metadata, security_flags } = req.body;
 
-      // Update conversation
+      // Update conversation with trace context
+      const updateData = addTraceContext({
+        end_time: timestamp,
+        last_activity: timestamp,
+        status: 'ended',
+        outcome,
+        quality_score,
+        response_time_ms,
+        user_satisfaction,
+        metadata: metadata || {},
+        security_flags: security_flags || {}
+      }, req);
+
       const { data, error } = await supabase
         .from('conversations')
-        .update({
-          end_time: timestamp,
-          last_activity: timestamp,
-          status: 'ended',
-          outcome,
-          quality_score,
-          response_time_ms,
-          user_satisfaction,
-          metadata: metadata || {},
-          security_flags: security_flags || {}
-        })
+        .update(updateData)
         .eq('session_id', session_id)
         .eq('client_id', client_id || req.clientId)
         .select()
@@ -475,22 +481,30 @@ router.post('/security/metrics',
   validateSchema(securityMetricsSchema),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const { event_type, timestamp, agent_id, client_id, unclosed_count, unclosed_sessions } = req.body;
+      const { event_type, timestamp, agent_id, client_id, unclosed_count, unclosed_sessions, metadata } = req.body;
 
-      // Insert security event
+      // Determine severity based on unclosed sessions count
+      let severity = 'low';
+      if (unclosed_count && unclosed_count > 10) severity = 'high';
+      else if (unclosed_count && unclosed_count > 5) severity = 'medium';
+
+      // Insert security event with trace context
+      const securityEventData = addTraceContext({
+        event_type,
+        timestamp,
+        agent_id,
+        client_id: client_id || req.clientId,
+        severity,
+        event_data: {
+          unclosed_count,
+          unclosed_sessions: unclosed_sessions || [],
+          metadata: metadata || {}
+        }
+      }, req);
+
       const { data, error } = await supabase
         .from('security_events')
-        .insert({
-          event_type,
-          timestamp,
-          agent_id,
-          client_id: client_id || req.clientId,
-          severity: 'medium',
-          event_data: {
-            unclosed_count,
-            unclosed_sessions: unclosed_sessions || []
-          }
-        })
+        .insert(securityEventData)
         .select()
         .single();
 
@@ -531,22 +545,24 @@ router.post('/security/tamper',
     try {
       const { event_type, timestamp, agent_id, client_id, sdk_version, checksum_expected, checksum_actual, modified_files, severity } = req.body;
 
-      // Insert tamper detection event
+      // Insert tamper detection event with trace context
+      const tamperEventData = addTraceContext({
+        event_type,
+        timestamp,
+        agent_id,
+        client_id: client_id || req.clientId,
+        severity,
+        event_data: {
+          sdk_version,
+          checksum_expected,
+          checksum_actual,
+          modified_files
+        }
+      }, req);
+
       const { data, error } = await supabase
         .from('security_events')
-        .insert({
-          event_type,
-          timestamp,
-          agent_id,
-          client_id: client_id || req.clientId,
-          severity,
-          event_data: {
-            sdk_version,
-            checksum_expected,
-            checksum_actual,
-            modified_files
-          }
-        })
+        .insert(tamperEventData)
         .select()
         .single();
 
@@ -588,22 +604,27 @@ router.post('/llm-usage',
   validateSchema(llmUsageSchema),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const { timestamp, provider, model, prompt_tokens, completion_tokens, total_tokens, session_id, agent_id, client_id } = req.body;
+      const { timestamp, agent_id, provider, model, tokens_input, tokens_output, session_id, client_id, metadata } = req.body;
 
-      // Insert LLM usage record
+      // Calculate cost based on pricing
+      const cost = calculateTokenCost(provider, model, tokens_input, tokens_output);
+
+      // Insert LLM usage record with trace context
+      const llmUsageData = addTraceContext({
+        timestamp,
+        agent_id,
+        provider,
+        model,
+        tokens_input,
+        tokens_output,
+        session_id,
+        client_id: client_id || req.clientId,
+        metadata: { ...metadata, cost_usd: cost }
+      }, req);
+
       const { data, error } = await supabase
         .from('llm_usage')
-        .insert({
-          timestamp,
-          provider,
-          model,
-          prompt_tokens,
-          completion_tokens,
-          total_tokens,
-          session_id,
-          agent_id,
-          client_id: client_id || req.clientId
-        })
+        .insert(llmUsageData)
         .select()
         .single();
 
@@ -618,7 +639,9 @@ router.post('/llm-usage',
       logger.info('LLM usage recorded', { 
         provider, 
         model, 
-        total_tokens, 
+        tokens_input,
+        tokens_output,
+        cost_usd: cost,
         session_id, 
         client_id: req.clientId 
       });

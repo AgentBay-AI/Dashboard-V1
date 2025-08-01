@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import {
   AgentActivityChart,
   SessionDurationChart 
 } from "@/components/Charts";
+import { apiClient, DashboardOverview, LLMUsageData, TopModel } from "@/lib/api";
 import { 
   Activity, 
   Users, 
@@ -32,30 +33,65 @@ import {
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
-
-  const mockData = {
+  const [dashboardData, setDashboardData] = useState<DashboardOverview>({
     agents: {
-      active: 12,
-      total: 25,
-      successRate: 94.2,
-      avgResponseTime: 1.2
+      active: 0,
+      total: 0,
+      successRate: 0,
+      avgResponseTime: 0
     },
     security: {
-      threats: 3,
-      riskLevel: "Medium",
-      complianceScore: 96
+      threats: 0,
+      riskLevel: "Low",
+      complianceScore: 0,
+      security_flags: {
+        pii_detected: 0,
+        tamper_detected: 0,
+        compliance_violation: 0
+      }
     },
     costs: {
-      totalTokens: 2456780,
-      monthlyCost: 1247.50,
-      costPerAgent: 49.90
+      totalTokens: 0,
+      monthlyCost: 0,
+      costPerAgent: 0
     },
     system: {
-      cpu: 68,
-      memory: 74,
-      uptime: 99.9
+      cpu: 0,
+      memory: 0,
+      uptime: 0
     }
-  };
+  });
+  const [llmUsageData, setLlmUsageData] = useState<LLMUsageData | null>(null);
+  const [topModels, setTopModels] = useState<TopModel[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch dashboard data from backend
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+        const [dashboardOverview, llmUsage, topModelsData] = await Promise.all([
+          apiClient.getDashboardOverview(),
+          apiClient.llm.getUsageAggregated('30d'),  // Use 30 days to match the top models endpoint
+          apiClient.llm.getTopModels(10, 'cost')
+        ]);
+        
+        setDashboardData(dashboardOverview);
+        setLlmUsageData(llmUsage);
+        setTopModels(topModelsData.top_models);
+      } catch (error) {
+        console.error('Failed to fetch dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+    
+    // Refresh data every 30 seconds
+    const interval = setInterval(fetchDashboardData, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen bg-background">
@@ -103,11 +139,11 @@ const Dashboard = () => {
                   <Users className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{mockData.agents.active}</div>
+                  <div className="text-2xl font-bold">{loading ? "..." : dashboardData.agents.active}</div>
                   <p className="text-xs text-muted-foreground">
-                    of {mockData.agents.total} total agents
+                    of {dashboardData.agents.total} total agents
                   </p>
-                  <Progress value={(mockData.agents.active / mockData.agents.total) * 100} className="mt-2" />
+                  <Progress value={(dashboardData.agents.active / dashboardData.agents.total) * 100} className="mt-2" />
                 </CardContent>
               </Card>
 
@@ -117,9 +153,9 @@ const Dashboard = () => {
                   <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{mockData.agents.successRate}%</div>
+                  <div className="text-2xl font-bold">{loading ? "..." : dashboardData.agents.successRate}%</div>
                   <p className="text-xs text-success">+2.3% from last week</p>
-                  <Progress value={mockData.agents.successRate} className="mt-2" />
+                  <Progress value={dashboardData.agents.successRate} className="mt-2" />
                 </CardContent>
               </Card>
 
@@ -129,9 +165,9 @@ const Dashboard = () => {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">${mockData.costs.monthlyCost}</div>
+                  <div className="text-2xl font-bold">${loading ? "..." : dashboardData.costs.monthlyCost}</div>
                   <p className="text-xs text-muted-foreground">
-                    ${mockData.costs.costPerAgent}/agent
+                    ${dashboardData.costs.costPerAgent}/agent
                   </p>
                 </CardContent>
               </Card>
@@ -142,14 +178,14 @@ const Dashboard = () => {
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{mockData.system.uptime}%</div>
+                  <div className="text-2xl font-bold">{loading ? "..." : dashboardData.system.uptime}%</div>
                   <p className="text-xs text-success">Excellent uptime</p>
                   <div className="mt-2 space-y-1">
                     <div className="flex justify-between text-xs">
                       <span>CPU</span>
-                      <span>{mockData.system.cpu}%</span>
+                      <span>{dashboardData.system.cpu}%</span>
                     </div>
-                    <Progress value={mockData.system.cpu} className="h-1" />
+                    <Progress value={dashboardData.system.cpu} className="h-1" />
                   </div>
                 </CardContent>
               </Card>
@@ -291,10 +327,10 @@ const Dashboard = () => {
           <TabsContent value="system" className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               {[
-                { title: "CPU Usage", value: `${mockData.system.cpu}%`, icon: Cpu, color: "text-chart-1" },
-                { title: "Memory Usage", value: `${mockData.system.memory}%`, icon: Server, color: "text-chart-2" },
-                { title: "System Uptime", value: `${mockData.system.uptime}%`, icon: Activity, color: "text-success" },
-                { title: "Response Time", value: "1.2s", icon: Zap, color: "text-warning" }
+                { title: "CPU Usage", value: `${dashboardData.system.cpu}%`, icon: Cpu, color: "text-chart-1" },
+                { title: "Memory Usage", value: `${dashboardData.system.memory}%`, icon: Server, color: "text-chart-2" },
+                { title: "System Uptime", value: `${dashboardData.system.uptime}%`, icon: Activity, color: "text-success" },
+                { title: "Response Time", value: `${dashboardData.agents.avgResponseTime}s`, icon: Zap, color: "text-warning" }
               ].map((metric, index) => (
                 <Card key={index}>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -325,14 +361,14 @@ const Dashboard = () => {
 
           {/* Security Tab */}
           <TabsContent value="security" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-4">
               <Card>
                 <CardHeader>
                   <CardTitle className="text-sm font-medium">Risk Assessment Level</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-warning">Medium</div>
-                  <p className="text-xs text-muted-foreground">3 active threats detected</p>
+                  <div className="text-2xl font-bold text-warning">{dashboardData.security.riskLevel}</div>
+                  <p className="text-xs text-muted-foreground">{dashboardData.security.threats} active threats detected</p>
                   <Badge variant="outline" className="mt-2 text-warning">Monitoring Active</Badge>
                 </CardContent>
               </Card>
@@ -342,9 +378,22 @@ const Dashboard = () => {
                   <CardTitle className="text-sm font-medium">Security Score</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-success">96%</div>
+                  <div className="text-2xl font-bold text-success">{loading ? "..." : dashboardData.security.complianceScore}%</div>
                   <p className="text-xs text-muted-foreground">Excellent security posture</p>
-                  <Progress value={96} className="mt-2" />
+                  <Progress value={dashboardData.security.complianceScore} className="mt-2" />
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium">PII Detections</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-orange-600">{loading ? "..." : dashboardData.security.security_flags.pii_detected}</div>
+                  <p className="text-xs text-muted-foreground">Sessions with PII detected</p>
+                  <Badge variant={dashboardData.security.security_flags.pii_detected > 0 ? "destructive" : "secondary"} className="mt-2">
+                    {dashboardData.security.security_flags.pii_detected > 0 ? "Attention Needed" : "All Clear"}
+                  </Badge>
                 </CardContent>
               </Card>
 
@@ -353,9 +402,15 @@ const Dashboard = () => {
                   <CardTitle className="text-sm font-medium">Compliance Status</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-success">Compliant</div>
-                  <p className="text-xs text-muted-foreground">All checks passed</p>
-                  <Badge variant="outline" className="mt-2 text-success">GDPR ✓ CCPA ✓</Badge>
+                  <div className="text-2xl font-bold text-success">
+                    {dashboardData.security.security_flags.compliance_violation === 0 ? "Compliant" : "Issues"}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {dashboardData.security.security_flags.compliance_violation} violations detected
+                  </p>
+                  <Badge variant={dashboardData.security.security_flags.compliance_violation === 0 ? "secondary" : "destructive"} className="mt-2">
+                    GDPR {dashboardData.security.security_flags.compliance_violation === 0 ? "✓" : "⚠"} CCPA {dashboardData.security.security_flags.compliance_violation === 0 ? "✓" : "⚠"}
+                  </Badge>
                 </CardContent>
               </Card>
             </div>
@@ -379,72 +434,93 @@ const Dashboard = () => {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm font-medium">Total Tokens Used</CardTitle>
+                  <CardTitle className="text-sm font-medium">Total LLM Cost</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">{mockData.costs.totalTokens.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">This month</p>
+                  <div className="text-2xl font-bold">${loading ? "..." : llmUsageData?.summary.total_cost.toFixed(4) || "0"}</div>
+                  <p className="text-xs text-muted-foreground">Last 24 hours</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm font-medium">Monthly Cost</CardTitle>
+                  <CardTitle className="text-sm font-medium">Input Tokens</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">${mockData.costs.monthlyCost}</div>
-                  <p className="text-xs text-success">-8.2% from last month</p>
+                  <div className="text-2xl font-bold">{loading ? "..." : llmUsageData?.summary.total_input_tokens.toLocaleString() || "0"}</div>
+                  <p className="text-xs text-muted-foreground">Prompt tokens used</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm font-medium">Cost per Agent</CardTitle>
+                  <CardTitle className="text-sm font-medium">Output Tokens</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">${mockData.costs.costPerAgent}</div>
-                  <p className="text-xs text-muted-foreground">Average monthly</p>
+                  <div className="text-2xl font-bold">{loading ? "..." : llmUsageData?.summary.total_output_tokens.toLocaleString() || "0"}</div>
+                  <p className="text-xs text-muted-foreground">Completion tokens generated</p>
                 </CardContent>
               </Card>
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm font-medium">Usage Trend</CardTitle>
+                  <CardTitle className="text-sm font-medium">LLM Requests</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-success">↗ 12%</div>
-                  <p className="text-xs text-muted-foreground">Compared to last month</p>
+                  <div className="text-2xl font-bold">{loading ? "..." : llmUsageData?.summary.total_requests || "0"}</div>
+                  <p className="text-xs text-muted-foreground">{llmUsageData?.summary.providers_used || "0"} providers used</p>
                 </CardContent>
               </Card>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <PieChart className="mr-2 h-5 w-5" />
-                    Cost Breakdown
-                  </CardTitle>
-                  <CardDescription>Monthly spending by category</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <CostBreakdownChart />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Clock className="mr-2 h-5 w-5" />
-                    Session Duration Analytics
-                  </CardTitle>
-                  <CardDescription>Average session duration trends</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <SessionDurationChart />
-                </CardContent>
-              </Card>
-            </div>
+            {/* LLM Usage Table */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <DollarSign className="mr-2 h-5 w-5" />
+                  LLM Usage by Provider & Model
+                </CardTitle>
+                <CardDescription>Token usage and costs breakdown for the last 24 hours</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Provider</th>
+                        <th className="text-left py-2">Model</th>
+                        <th className="text-right py-2">Input Tokens</th>
+                        <th className="text-right py-2">Output Tokens</th>
+                        <th className="text-right py-2">Cost (USD)</th>
+                        <th className="text-right py-2">Requests</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={6} className="text-center py-4 text-muted-foreground">Loading...</td>
+                        </tr>
+                      ) : topModels.length > 0 ? (
+                        topModels.map((model, index) => (
+                          <tr key={index} className="border-b">
+                            <td className="py-2 font-medium capitalize">{model.provider}</td>
+                            <td className="py-2 text-muted-foreground">{model.model}</td>
+                            <td className="py-2 text-right">{model.input_tokens.toLocaleString()}</td>
+                            <td className="py-2 text-right">{model.output_tokens.toLocaleString()}</td>
+                            <td className="py-2 text-right font-medium">${model.cost.toFixed(4)}</td>
+                            <td className="py-2 text-right">{model.request_count}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="text-center py-4 text-muted-foreground">No LLM usage data available</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Resources Tab */}

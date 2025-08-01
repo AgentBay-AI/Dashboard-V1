@@ -7,6 +7,9 @@ export interface AuthenticatedRequest extends Request {
   clientId?: string;
   clientPermissions?: string[];
   rateLimitPerMinute?: number;
+  traceId?: string;
+  spanId?: string;
+  traceContext?: any;
 }
 
 // Rate limiting storage (in production, use Redis)

@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS conversations (
   user_satisfaction DECIMAL(2,1) NULL,
   metadata JSONB DEFAULT '{}',
   security_flags JSONB DEFAULT '{}',
+  trace_id VARCHAR(32) NULL,
+  span_id VARCHAR(16) NULL,
+  trace_context JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   FOREIGN KEY (agent_id) REFERENCES sdk_agents(agent_id) ON DELETE SET NULL
 );
@@ -46,19 +49,24 @@ CREATE INDEX IF NOT EXISTS idx_conversations_agent_id ON conversations(agent_id)
 CREATE INDEX IF NOT EXISTS idx_conversations_status ON conversations(status);
 CREATE INDEX IF NOT EXISTS idx_conversations_start_time ON conversations(start_time);
 CREATE INDEX IF NOT EXISTS idx_conversations_client_id ON conversations(client_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_trace_id ON conversations(trace_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_security_flags ON conversations USING GIN(security_flags);
 
 -- Create LLM Usage table
 CREATE TABLE IF NOT EXISTS llm_usage (
   id BIGSERIAL PRIMARY KEY,
   timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  provider VARCHAR(20) CHECK (provider IN ('openai', 'anthropic', 'gemini')) NOT NULL,
+  agent_id VARCHAR(255) NOT NULL,
+  provider VARCHAR(20) CHECK (provider IN ('openai', 'claude', 'anthropic', 'gemini', 'google')) NOT NULL,
   model VARCHAR(100) NOT NULL,
-  prompt_tokens INTEGER NOT NULL DEFAULT 0,
-  completion_tokens INTEGER NOT NULL DEFAULT 0,
-  total_tokens INTEGER NOT NULL DEFAULT 0,
+  tokens_input INTEGER NOT NULL DEFAULT 0,
+  tokens_output INTEGER NOT NULL DEFAULT 0,
   session_id VARCHAR(255) NULL,
-  agent_id VARCHAR(255) NULL,
-  client_id VARCHAR(255),
+  client_id VARCHAR(255) NOT NULL,
+  metadata JSONB DEFAULT '{}',
+  trace_id VARCHAR(32) NULL,
+  span_id VARCHAR(16) NULL,
+  trace_context JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   FOREIGN KEY (session_id) REFERENCES conversations(session_id) ON DELETE SET NULL,
   FOREIGN KEY (agent_id) REFERENCES sdk_agents(agent_id) ON DELETE SET NULL
@@ -79,6 +87,9 @@ CREATE TABLE IF NOT EXISTS security_events (
   client_id VARCHAR(255) NOT NULL,
   severity VARCHAR(20) CHECK (severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
   event_data JSONB DEFAULT '{}',
+  trace_id VARCHAR(32) NULL,
+  span_id VARCHAR(16) NULL,
+  trace_context JSONB DEFAULT '{}',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   FOREIGN KEY (agent_id) REFERENCES sdk_agents(agent_id) ON DELETE SET NULL
 );
@@ -88,6 +99,7 @@ CREATE INDEX IF NOT EXISTS idx_security_events_event_type ON security_events(eve
 CREATE INDEX IF NOT EXISTS idx_security_events_severity ON security_events(severity);
 CREATE INDEX IF NOT EXISTS idx_security_events_timestamp ON security_events(timestamp);
 CREATE INDEX IF NOT EXISTS idx_security_events_client_id ON security_events(client_id);
+CREATE INDEX IF NOT EXISTS idx_security_events_trace_id ON security_events(trace_id);
 
 -- Create Compliance Audit table
 CREATE TABLE IF NOT EXISTS compliance_audit (

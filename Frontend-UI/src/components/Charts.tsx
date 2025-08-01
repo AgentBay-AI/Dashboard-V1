@@ -1,14 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
+import { apiClient } from "@/lib/api";
 
-// Mock data for charts
-const performanceData = [
-  { time: "00:00", successRate: 92, responseTime: 1.2, sessions: 45 },
-  { time: "04:00", successRate: 94, responseTime: 1.1, sessions: 38 },
-  { time: "08:00", successRate: 96, responseTime: 0.9, sessions: 72 },
-  { time: "12:00", successRate: 95, responseTime: 1.0, sessions: 95 },
-  { time: "16:00", successRate: 97, responseTime: 0.8, sessions: 88 },
-  { time: "20:00", successRate: 94, responseTime: 1.3, sessions: 67 }
+// Default data structure for fallback
+const defaultPerformanceData = [
+  { time: "00:00", successRate: 0, responseTime: 0, sessions: 0 },
+  { time: "04:00", successRate: 0, responseTime: 0, sessions: 0 },
+  { time: "08:00", successRate: 0, responseTime: 0, sessions: 0 },
+  { time: "12:00", successRate: 0, responseTime: 0, sessions: 0 },
+  { time: "16:00", successRate: 0, responseTime: 0, sessions: 0 },
+  { time: "20:00", successRate: 0, responseTime: 0, sessions: 0 }
 ];
 
 const systemHealthData = [
@@ -76,6 +77,24 @@ const CustomTooltip = ({ active, payload, label, description }: CustomTooltipPro
 
 export const PerformanceChart = () => {
   const [hoveredData, setHoveredData] = useState<any>(null);
+  const [performanceData, setPerformanceData] = useState(defaultPerformanceData);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await apiClient.getPerformanceData();
+        if (data.length > 0) {
+          setPerformanceData(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch performance data:', error);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="w-full">

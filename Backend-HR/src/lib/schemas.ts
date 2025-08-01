@@ -112,9 +112,17 @@ export const securityMetricsSchema = z.object({
   unclosed_count: z.number().min(0).optional(),
   unclosed_sessions: z.array(z.object({
     session_id: sessionIdSchema,
+    agent_id: agentIdSchema,
     start_time: timestampSchema,
-    last_activity: timestampSchema
-  })).optional()
+    last_activity: timestampSchema,
+    duration_minutes: z.number().min(0).optional(),
+    risk_level: z.enum(['low', 'medium', 'high', 'critical']).optional()
+  })).optional(),
+  metadata: z.object({
+    detection_method: z.string().optional(),
+    threshold_exceeded: z.boolean().optional(),
+    total_sessions_tracked: z.number().min(0).optional()
+  }).optional()
 });
 
 export const securityTamperSchema = z.object({
@@ -132,14 +140,18 @@ export const securityTamperSchema = z.object({
 // LLM Usage Schema
 export const llmUsageSchema = z.object({
   timestamp: timestampSchema,
-  provider: z.enum(['openai', 'anthropic', 'gemini']),
+  agent_id: agentIdSchema,
+  provider: z.enum(['openai', 'claude', 'anthropic', 'gemini', 'google']),
   model: z.string(),
-  prompt_tokens: z.number().min(0),
-  completion_tokens: z.number().min(0),
-  total_tokens: z.number().min(0),
+  tokens_input: z.number().min(0),
+  tokens_output: z.number().min(0),
   session_id: sessionIdSchema.optional(),
-  agent_id: agentIdSchema.optional(),
-  client_id: clientIdSchema.optional()
+  client_id: clientIdSchema,
+  metadata: z.object({
+    request_id: z.string().optional(),
+    user_id: z.string().optional(),
+    conversation_turn: z.number().optional()
+  }).optional()
 });
 
 // Compliance Schemas

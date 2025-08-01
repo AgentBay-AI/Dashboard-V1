@@ -35,7 +35,7 @@ router.get('/overview',
       // Get conversation statistics for today
       const { data: conversationData, error: conversationError } = await supabase
         .from('conversations')
-        .select('status, response_time_ms, quality_score, start_time')
+        .select('status, response_time_ms, quality_score, start_time, security_flags')
         .eq('client_id', req.clientId)
         .gte('start_time', todayStart.toISOString());
 
@@ -75,10 +75,19 @@ router.get('/overview',
                               avgQualityScore >= 2.5 ? 'good' :
                               avgQualityScore >= 1.5 ? 'fair' : 'poor';
 
+      // Calculate security flags statistics
+      const securityFlags = conversationData.reduce((acc, conversation) => {
+        const flags = conversation.security_flags || {};
+        acc.pii_detected += flags.pii_detected ? 1 : 0;
+        acc.tamper_detected += flags.tamper_detected ? 1 : 0;
+        acc.compliance_violation += flags.compliance_violation ? 1 : 0;
+        return acc;
+      }, { pii_detected: 0, tamper_detected: 0, compliance_violation: 0 });
+
       // Get LLM usage statistics for today
       const { data: llmData, error: llmError } = await supabase
         .from('llm_usage')
-        .select('total_tokens, provider, model')
+        .select('tokens_input, tokens_output, provider, model, metadata')
         .eq('client_id', req.clientId)
         .gte('timestamp', todayStart.toISOString());
 
@@ -86,19 +95,11 @@ router.get('/overview',
         throw llmError;
       }
 
-      const totalTokensToday = llmData.reduce((sum, usage) => sum + usage.total_tokens, 0);
+      const totalTokensToday = llmData.reduce((sum, usage) => sum + usage.tokens_input + usage.tokens_output, 0);
       
-      // Estimate cost (rough estimates per 1K tokens)
-      const costEstimates = {
-        'gpt-4': 0.03,
-        'gpt-3.5-turbo': 0.002,
-        'claude-3': 0.015,
-        'gemini-pro': 0.001
-      };
-
+      // Get actual cost from metadata
       const costEstimate = llmData.reduce((total, usage) => {
-        const rate = costEstimates[usage.model as keyof typeof costEstimates] || 0.01;
-        return total + (usage.total_tokens / 1000) * rate;
+        return total + (usage.metadata?.cost_usd || 0);
       }, 0);
 
       // Get top models used
@@ -154,15 +155,20 @@ router.get('/overview',
           avg_response_time_ms: avgResponseTime,
           avg_quality_score: qualityScoreText
         },
-        llm_usage: {
-          total_tokens_today: totalTokensToday,
-          cost_estimate_usd: Math.round(costEstimate * 100) / 100,
-          top_models: topModels
+        costs: {
+          totalTokens: totalTokensToday,
+          monthlyCost: Math.round(costEstimate * 100) / 100,
+          costPerAgent: agentData.length ? Math.round((costEstimate / agentData.length) * 100) / 100 : 0
         },
         security: {
           tamper_events: securityCounts.tamper_detected || 0,
           pii_detections: securityCounts.pii_detected || 0,
-          unclosed_sessions: unclosedData.length
+          unclosed_sessions: unclosedData.length,
+          security_flags: {
+            pii_detected: securityFlags.pii_detected,
+            tamper_detected: securityFlags.tamper_detected,
+            compliance_violation: securityFlags.compliance_violation
+          }
         },
         last_updated: new Date().toISOString()
       };

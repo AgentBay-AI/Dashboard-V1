@@ -1,3 +1,6 @@
+// Initialize OTEL before other imports
+import './telemetry';
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -11,9 +14,11 @@ import { authRoutes } from './routes/auth';
 import { agentTrackingRoutes } from './routes/agent-tracking';
 import { dashboardRoutes } from './routes/dashboard';
 import { apiKeyRoutes } from './routes/api-keys';
+import { llmAnalyticsRoutes } from './routes/llm-analytics';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import { initializeDatabase } from './lib/database-init';
+import { traceContextMiddleware } from './middleware/tracing';
 
 // Load environment variables
 dotenv.config();
@@ -59,6 +64,9 @@ app.use('/api/', limiter);
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// OTEL Tracing middleware
+app.use(traceContextMiddleware);
 
 // Request logging
 app.use((req, res, next) => {
@@ -111,6 +119,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/sdk', agentTrackingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin/api-keys', apiKeyRoutes);
+app.use('/api/llm-usage', llmAnalyticsRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
