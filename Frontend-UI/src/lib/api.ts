@@ -319,6 +319,12 @@ export const apiClient = {
     }
   },
 
+  // API Keys
+  generateApiKey: async (clientData: { client_id: string; client_name: string; permissions?: string[]; rate_limit_per_minute?: number; expires_at?: string }) => {
+    const { data } = await api.post('/api-keys', clientData);
+    return data;
+  },
+
   agents: {
     register: async (data: Omit<Agent, 'status'>) => {
       const response = await api.post<ApiResponse<Agent>>('/agents/register', data);

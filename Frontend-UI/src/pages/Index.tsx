@@ -23,7 +23,7 @@ const Index = () => {
       price: "$99",
       period: "/month",
       description: "Advanced features for growing businesses",
-      features: ["25 agents", "Advanced analytics", "Priority support", "Custom integrations", "API access"],
+      features: ["25 agents", "Advanced analytics", "Priority support", "Custom integrations"],
       popular: true
     },
     {
@@ -31,7 +31,7 @@ const Index = () => {
       price: "$299", 
       period: "/month",
       description: "Full-featured solution for large organizations",
-      features: ["Unlimited agents", "Custom features", "24/7 support", "White-label options", "On-premise deployment"],
+      features: ["Unlimited agents", "Custom features", "24/7 support", "On-premise deployment"],
       popular: false
     },
     {
@@ -39,7 +39,7 @@ const Index = () => {
       price: "Contact",
       period: "us",
       description: "Tailored solutions for enterprise needs",
-      features: ["Custom pricing", "Dedicated support", "Custom development", "SLA guarantees", "Training included"],
+      features: ["Custom pricing", "Dedicated support", "Custom development", "SLA guarantees"],
       popular: false
     }
   ];
@@ -198,43 +198,7 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Revenue Streams */}
-        <section className="py-20 px-6">
-          <div className="max-w-4xl mx-auto text-center">
-            <h2 className="text-3xl font-bold mb-8 animate-fade-in">Revenue Streams</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <Card className="animate-fade-in" style={{ animationDelay: "0.1s" }}>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <DollarSign className="w-5 h-5 mr-2 text-success" />
-                    Subscription Model
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">
-                    Recurring monthly and annual subscriptions provide predictable revenue 
-                    with automatic scaling based on usage and features.
-                  </p>
-                </CardContent>
-              </Card>
-              
-              <Card className="animate-fade-in" style={{ animationDelay: "0.2s" }}>
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Star className="w-5 h-5 mr-2 text-warning" />
-                    Enterprise Solutions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-muted-foreground">
-                    Custom enterprise pricing for white-label solutions, on-premise 
-                    deployments, and dedicated support contracts.
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </section>
+
 
         {/* Footer */}
         <footer className="py-12 px-6 border-t bg-card">

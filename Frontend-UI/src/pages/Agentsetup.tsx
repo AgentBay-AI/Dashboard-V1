@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,13 +15,16 @@ import {
   Key, 
   AlertTriangle,
   Copy,
-  CheckCircle
+  CheckCircle,
+  Loader2
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { apiClient } from "@/lib/api";
 
 type SetupStep = "agent-type" | "agent-details" | "llm-provider" | "sdk-setup" | "platform-choice" | "complete";
 
 const AgentSetup = () => {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<SetupStep>("agent-type");
   const [setupData, setSetupData] = useState({
     agentType: "",
@@ -34,11 +37,39 @@ const AgentSetup = () => {
   });
 
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [isAgentConnected, setIsAgentConnected] = useState(false);
+  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
+  const [keyGenerated, setKeyGenerated] = useState(false);
 
-  const generateApiKey = () => {
-    const key = `sk-${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-    setSetupData(prev => ({ ...prev, apiKey: key }));
+  const generateApiKey = async () => {
+    setIsGeneratingKey(true);
+    try {
+      const clientId = `${setupData.agentName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+      const response = await apiClient.generateApiKey({
+        client_id: clientId,
+        client_name: setupData.agentName || 'Agent Setup',
+        permissions: ['agent:read', 'agent:write', 'analytics:read'],
+        rate_limit_per_minute: 1000
+      });
+      
+      setSetupData(prev => ({ ...prev, apiKey: response.api_key }));
+      setKeyGenerated(true);
+    } catch (error) {
+      console.error('Failed to generate API key:', error);
+      // Fallback to local generation if backend fails
+      const key = `sk-${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+      setSetupData(prev => ({ ...prev, apiKey: key }));
+      setKeyGenerated(true);
+    } finally {
+      setIsGeneratingKey(false);
+    }
   };
+
+  useEffect(() => {
+    if (currentStep === "sdk-setup" && !setupData.apiKey) {
+      generateApiKey();
+    }
+  }, [currentStep, setupData.apiKey]);
 
   const copyApiKey = () => {
     navigator.clipboard.writeText(setupData.apiKey);
@@ -63,13 +94,19 @@ const AgentSetup = () => {
     setCurrentStep(nextStep);
   };
 
+  const handleCompleteSetup = () => {
+    navigate('/dashboard');
+  };
+
   const platforms = [
     "Dialogflow",
     "Microsoft Bot Framework", 
     "Amazon Lex",
     "Rasa",
     "Botpress",
-    "Voiceflow"
+    "Voiceflow",
+    "Zapier",
+    "N&N"
   ];
 
   const renderStep = () => {
@@ -255,14 +292,66 @@ const AgentSetup = () => {
                   </Button>
                 ))}
               </div>
-              <Button 
-                onClick={handleNext}
-                className="w-full h-12 text-base font-semibold mt-8"
-                disabled={!setupData.platform}
-              >
-                Generate API Key
-                <Key className="ml-2 h-5 w-5" />
-              </Button>
+              {!keyGenerated ? (
+                <Button 
+                  onClick={generateApiKey}
+                  className="w-full h-12 text-base font-semibold mt-8"
+                  disabled={!setupData.platform || isGeneratingKey}
+                >
+                  {isGeneratingKey ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Generating API Key...
+                    </>
+                  ) : (
+                    <>
+                      Generate API Key
+                      <Key className="ml-2 h-5 w-5" />
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <div className="space-y-6 mt-8">
+                  <div>
+                    <Label htmlFor="generated-api-key" className="text-sm font-medium mb-2 block">
+                      Your API Key
+                    </Label>
+                    <Alert className="mb-4">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertDescription className="text-sm">
+                        <strong>Important:</strong> Store this key securely. It will not be shown again after setup.
+                      </AlertDescription>
+                    </Alert>
+                    <div className="flex gap-2">
+                      <Input
+                        id="generated-api-key"
+                        value={setupData.apiKey}
+                        readOnly
+                        className="font-mono text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={copyApiKey}
+                      >
+                        {apiKeyCopied ? (
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={handleCompleteSetup}
+                    className="w-full h-12 text-base font-semibold"
+                  >
+                    Complete Setup
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         );
@@ -314,27 +403,64 @@ const analytics = new AnalyticsSDK({
                         This key will not be available after 1 hour for security reasons.
                       </AlertDescription>
                     </Alert>
-                    <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                      <Input 
-                        value={setupData.apiKey} 
-                        readOnly 
-                        className="font-mono text-sm flex-1"
-                      />
+
+                    <div className="mb-4">
+                      <Label htmlFor="api-key" className="text-sm font-medium mb-2 block">
+                        Your API Key
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="api-key"
+                          value={setupData.apiKey}
+                          readOnly
+                          className="font-mono text-sm"
+                          placeholder="Click generate to create API key"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => {
+                            navigator.clipboard.writeText(setupData.apiKey);
+                            setApiKeyCopied(true);
+                            setTimeout(() => setApiKeyCopied(false), 2000);
+                          }}
+                          disabled={!setupData.apiKey}
+                        >
+                          {apiKeyCopied ? (
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <Copy className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
                       <Button
+                        type="button"
                         variant="outline"
-                        onClick={copyApiKey}
-                        className="sm:w-auto"
+                        size="sm"
+                        className={`transition-all duration-200 ${
+                          isAgentConnected 
+                            ? 'bg-green-500 hover:bg-green-600 text-white border-green-500' 
+                            : 'bg-red-500 hover:bg-red-600 text-white border-red-500'
+                        }`}
+                        onClick={() => setIsAgentConnected(!isAgentConnected)}
                       >
-                        {apiKeyCopied ? <CheckCircle className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                        {apiKeyCopied ? "Copied!" : "Copy"}
+                        <div className={`w-2 h-2 rounded-full mr-2 ${
+                          isAgentConnected ? 'bg-white' : 'bg-white'
+                        }`} />
+                        {isAgentConnected ? 'Agent Connected' : 'Agent Disconnected'}
                       </Button>
                     </div>
+
                   </div>
                 </div>
               </div>
 
               <Button 
-                onClick={handleNext}
+                onClick={handleCompleteSetup}
                 className="w-full h-12 text-base font-semibold"
               >
                 Complete Setup

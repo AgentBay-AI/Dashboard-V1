@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +35,7 @@ import { ActiveAgents } from "@/components/dashboard/active-agents";
 import { AgentActivityLog } from "@/components/dashboard/agent-activity";
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("overview");
   const [dashboardData, setDashboardData] = useState<DashboardOverview>({
     agents: {
@@ -114,11 +116,11 @@ const Dashboard = () => {
             <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
           </div>
           <div className="flex items-center space-x-4">
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => navigate('/agent-setup')}>
               <Plus className="mr-2 h-4 w-4" />
               Add Agent
             </Button>
-            <Button variant="outline" size="sm">
+            <Button variant="outline" size="sm" onClick={() => navigate('/organization-setup')}>
               <Plus className="mr-2 h-4 w-4" />
               Add Organisation
             </Button>
