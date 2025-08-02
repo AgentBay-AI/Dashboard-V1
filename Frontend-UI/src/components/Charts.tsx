@@ -18,7 +18,7 @@ const systemHealthData = [
   { time: "08:00", cpu: 78, memory: 72, storage: 38 },
   { time: "12:00", cpu: 68, memory: 74, storage: 42 },
   { time: "16:00", cpu: 72, memory: 69, storage: 45 },
-  { time: "20:00", cpu: 58, memory: 65, storage: 48 }
+  { time: "20:00", cpu: 58, memory: 65, storage: 48 },
 ];
 
 const costBreakdownData = [
@@ -250,7 +250,7 @@ export const CostBreakdownChart = () => {
               paddingAngle={5}
               dataKey="value"
               nameKey="name"
-              label={({ name, displayValue }) => `${name} (${displayValue}%)`}
+              
             >
               {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

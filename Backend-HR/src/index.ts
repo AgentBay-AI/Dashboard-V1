@@ -4,153 +4,52 @@ import './telemetry';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
-import { agentRoutes } from './routes/agents';
-import { mockDataRoutes } from './routes/mock-data';
-import { frontendApiRoutes } from './routes/frontend-api';
-import { analyticsApiRoutes } from './routes/analytics-api';
-import { authRoutes } from './routes/auth';
-import { agentTrackingRoutes } from './routes/agent-tracking';
-import { dashboardRoutes } from './routes/dashboard';
-import { apiKeyRoutes } from './routes/api-keys';
-import { llmAnalyticsRoutes } from './routes/llm-analytics';
+import { logger } from './utils/logger';
+import agentRoutes from './routes/agent-tracking';
+import apiKeyRoutes from './routes/api-keys';
 import conversationRoutes from './routes/conversations';
 import metricsRoutes from './routes/metrics';
-import { errorHandler } from './middleware/errorHandler';
-import { logger } from './utils/logger';
-import { initializeDatabase } from './lib/database-init';
-import { traceContextMiddleware } from './middleware/tracing';
-
-// Load environment variables
-dotenv.config();
+import { llmAnalyticsRoutes } from './routes/llm-analytics';
+import { addTraceContext } from './middleware/tracing';
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const port = process.env.PORT || 8080;
 
-// Security middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
+// Middleware
+app.use(helmet());
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || '*',
+    credentials: true
 }));
+app.use(express.json());
 
-// CORS configuration
-const corsOptions = {
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'https://hr-agent-frontend-1080649900100.me-central1.run.app',
-    process.env.FRONTEND_URL || 'http://localhost:3000'
-  ],
-  credentials: true,
-  optionsSuccessStatus: 200
-};
-app.use(cors(corsOptions));
-
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000, // limit each IP to 100 requests per windowMs in production
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-app.use('/api/', limiter);
-
-// Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-
-// OTEL Tracing middleware
-app.use(traceContextMiddleware);
-
-// Request logging
+// Add trace context to all requests
 app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.get('User-Agent'),
-    timestamp: new Date().toISOString()
-  });
-  next();
+    req.body = addTraceContext(req.body || {}, req);
+    next();
 });
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0',
-    environment: process.env.NODE_ENV || 'development',
-    uptime: process.uptime()
-  });
-});
-
-// Root endpoint
-app.get('/', (req, res) => {
-  res.json({
-    message: 'AI Agent Operations Platform API',
-    version: '1.0.0',
-    status: 'running',
-    endpoints: {
-      health: '/health',
-      agents: '/api/agents',
-      metrics: '/api/agents/log',
-      health_log: '/api/agents/health',
-      sdk_tracking: '/api/sdk',
-      dashboard: '/api/dashboard',
-      admin: '/api/admin'
-    },
-    docs: 'https://github.com/your-repo/ai-hr-agent'
-  });
-});
-
-// API routes
+// Routes
 app.use('/api/agents', agentRoutes);
-app.use('/api/mock', mockDataRoutes);
-app.use('/api/frontend', frontendApiRoutes);
-app.use('/api/analytics', analyticsApiRoutes);
-app.use('/api/auth', authRoutes);
-
-// New AI Agent Tracking API routes
-app.use('/api/sdk', agentTrackingRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/admin/api-keys', apiKeyRoutes);
-app.use('/api/llm-usage', llmAnalyticsRoutes);
+app.use('/api/keys', apiKeyRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/metrics', metricsRoutes);
+app.use('/api/llm-usage', llmAnalyticsRoutes);
 
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({
-    error: 'Endpoint not found',
-    message: `The endpoint ${req.method} ${req.originalUrl} does not exist`,
-    availableEndpoints: ['/health', '/api/agents', '/api/sdk', '/api/dashboard', '/api/admin/api-keys']
-  });
+// Health check
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Global error handler
-app.use(errorHandler);
-
-// Start server
-app.listen(PORT, async () => {
-  logger.info(`🚀 Server running on port ${PORT}`, {
-    environment: process.env.NODE_ENV || 'development',
-    port: PORT,
-    timestamp: new Date().toISOString()
-  });
-  
-  // Initialize database (non-blocking)
-  try {
-    await initializeDatabase();
-  } catch (error) {
-    logger.warn('Database initialization failed, continuing with mock mode:', error);
-  }
+// Error handling
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    logger.error('Unhandled error:', err);
+    res.status(500).json({
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
+    });
 });
 
-export default app; 
+app.listen(port, () => {
+    logger.info(`Server running on port ${port}`);
+}); 

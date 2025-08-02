@@ -173,7 +173,7 @@ export interface Agent {
 
 export interface AgentActivity {
   agent_id: string;
-  action: string;
+  activity_type: string;
   timestamp: string;
   details: Record<string, any>;
   duration: number | null;
@@ -305,8 +305,13 @@ export const apiClient = {
   // System health data
   getSystemHealthData: async (): Promise<SystemHealthData[]> => {
     try {
-      const { data } = await api.get('/dashboard/system-health');
-      return data.system_health || [];
+      // Return simulated system health data
+      return [{
+        time: new Date().toISOString(),
+        cpu: Math.floor(Math.random() * 30) + 50, // 50-80%
+        memory: Math.floor(Math.random() * 30) + 60, // 60-90%
+        storage: Math.floor(Math.random() * 20) + 70 // 70-90%
+      }];
     } catch (error) {
       console.error('Failed to fetch system health data:', error);
       return [];

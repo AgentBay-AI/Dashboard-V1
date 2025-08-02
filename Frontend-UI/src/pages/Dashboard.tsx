@@ -100,14 +100,21 @@ const Dashboard = () => {
         });
 
         // Calculate success rate and average response time from metrics
-        const avgSuccessRate = metricsResponse.data.reduce((acc, agent) => 
-          acc + agent.success_rate_percent, 0) / metricsResponse.data.length;
+        const metrics = metricsResponse?.data || [];
         
-        const avgResponseTime = metricsResponse.data.reduce((acc, agent) => 
-          acc + (agent.avg_response_time_ms || 0), 0) / metricsResponse.data.length;
+        // Find agent with valid metrics (has sessions and non-null values)
+        const validAgent = metrics.find(m => 
+          m.total_sessions > 0 && 
+          m.success_rate_percent !== null && 
+          m.avg_response_time_ms !== null
+        );
+
+        // Use the valid agent's metrics directly
+        const successRate = validAgent?.success_rate_percent || 0;
+        const responseTime = validAgent?.avg_response_time_ms || 0;
 
         // Calculate quality metrics
-        const qualityMetrics = metricsResponse.data.reduce((acc, agent) => {
+        const qualityMetrics = metrics.reduce((acc, agent) => {
           if (agent.avg_quality_score) {
             acc.totalScore += agent.avg_quality_score;
             acc.count += 1;
@@ -117,16 +124,16 @@ const Dashboard = () => {
 
         const dashboardOverview: DashboardOverview = {
           agents: {
-            active: operationsResponse.data.active_agents?.length || 0,
-            total: operationsResponse.data.active_agents?.length || 0,
-            successRate: avgSuccessRate || 0,
-            avgResponseTime: avgResponseTime || 0
+            active: operationsResponse?.data?.active_agents?.length || 0,
+            total: operationsResponse?.data?.active_agents?.length || 0,
+            successRate: successRate,
+            avgResponseTime: responseTime
           },
           conversations: {
-            total: metricsResponse.data.reduce((acc, agent) => acc + agent.total_sessions, 0),
+            total: metrics.reduce((acc, agent) => acc + (agent.total_sessions || 0), 0),
             active: 0, // Will be updated with real data
-            completed: metricsResponse.data.reduce((acc, agent) => acc + agent.successful_sessions, 0),
-            failed: metricsResponse.data.reduce((acc, agent) => acc + agent.failed_sessions, 0)
+            completed: metrics.reduce((acc, agent) => acc + (agent.successful_sessions || 0), 0),
+            failed: metrics.reduce((acc, agent) => acc + (agent.failed_sessions || 0), 0)
           },
           security: {
             threats: 0,
@@ -139,10 +146,10 @@ const Dashboard = () => {
             }
           },
           costs: {
-            totalTokens: (llmUsage.summary?.total_input_tokens || 0) + (llmUsage.summary?.total_output_tokens || 0),
-            monthlyCost: llmUsage.summary?.total_cost || 0,
-            costPerAgent: operationsResponse.data.active_agents?.length > 0 ? 
-              (llmUsage.summary?.total_cost || 0) / operationsResponse.data.active_agents.length : 0
+            totalTokens: (llmUsage?.summary?.total_input_tokens || 0) + (llmUsage?.summary?.total_output_tokens || 0),
+            monthlyCost: llmUsage?.summary?.total_cost || 0,
+            costPerAgent: operationsResponse?.data?.active_agents?.length > 0 ? 
+              (llmUsage?.summary?.total_cost || 0) / operationsResponse.data.active_agents.length : 0
           },
           quality: {
             avgScore: qualityMetrics.count > 0 ? qualityMetrics.totalScore / qualityMetrics.count : 0,
@@ -157,7 +164,7 @@ const Dashboard = () => {
         
         setDashboardData(dashboardOverview);
         setLlmUsageData(llmUsage);
-        setMetricsData(metricsResponse.data);
+        setMetricsData(metrics);
         
         console.log('Dashboard: State updated');
       } catch (error) {

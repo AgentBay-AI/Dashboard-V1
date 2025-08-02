@@ -73,7 +73,7 @@ export const AgentActivityLog = () => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium truncate">
-                      {activity.action}
+                      {activity.activity_type}
                     </p>
                     <span className="text-xs text-muted-foreground">
                       {formatTime(activity.timestamp)}

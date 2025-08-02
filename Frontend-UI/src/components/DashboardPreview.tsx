@@ -84,7 +84,7 @@ const DashboardPreview = () => {
       id: "success",
       title: "Success Rate",
       value: `${animatedValues.successRate}%`,
-      subtitle: "+2.3% from last week",
+      subtitle: "+0.0% from last week",
       icon: TrendingUp,
       color: "text-success",
       progress: animatedValues.successRate,

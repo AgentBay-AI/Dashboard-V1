@@ -1,36 +1,40 @@
 import winston from 'winston';
 
-const logFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.errors({ stack: true }),
-  winston.format.json()
-);
+interface CustomLogger extends winston.Logger {
+    requestContext: (req: any) => {
+        ip: string | undefined;
+        method: string | undefined;
+        url: string | undefined;
+        userAgent: string | undefined;
+        clientId: string | undefined;
+        traceId: string | undefined;
+    };
+}
 
-export const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: logFormat,
-  defaultMeta: { service: 'hr-agent-backend' },
-  transports: [
-    new winston.transports.File({ 
-      filename: 'logs/error.log', 
-      level: 'error',
-      handleExceptions: true,
-      handleRejections: true
-    }),
-    new winston.transports.File({ 
-      filename: 'logs/combined.log',
-      handleExceptions: true,
-      handleRejections: true
-    }),
-  ],
-});
-
-// Add console transport for development
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
+const logger = winston.createLogger({
+    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+    ),
+    transports: [
+        new winston.transports.Console({
     format: winston.format.combine(
       winston.format.colorize(),
       winston.format.simple()
     )
-  }));
-} 
+        })
+    ]
+}) as CustomLogger;
+
+// Add request context if available
+logger.requestContext = (req: any) => ({
+    ip: req?.ip,
+    method: req?.method,
+    url: req?.originalUrl,
+    userAgent: req?.headers?.['user-agent'],
+    clientId: req?.clientId,
+    traceId: req?.traceId
+});
+
+export { logger }; 
