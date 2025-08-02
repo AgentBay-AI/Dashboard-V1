@@ -53,6 +53,12 @@ export interface DashboardOverview {
     successRate: number;
     avgResponseTime: number;
   };
+  conversations: {
+    total: number;
+    active: number;
+    completed: number;
+    failed: number;
+  };
   security: {
     threats: number;
     riskLevel: string;
@@ -67,6 +73,10 @@ export interface DashboardOverview {
     totalTokens: number;
     monthlyCost: number;
     costPerAgent: number;
+  };
+  quality: {
+    avgScore: number;
+    totalRated: number;
   };
   system: {
     cpu: number;
@@ -175,6 +185,27 @@ export interface OperationsOverview {
   recent_activity: AgentActivity[];
 }
 
+export interface MetricsOverview {
+  agent_id: string;
+  total_sessions: number;
+  successful_sessions: number;
+  failed_sessions: number;
+  success_rate_percent: number;
+  avg_response_time_ms: number | null;
+  avg_quality_score: number | null;
+  last_updated: string;
+}
+
+export interface ActiveConversation {
+  session_id: string;
+  agent_id: string;
+  status: string;
+  start_time: string;
+  total_messages: number;
+  last_message_time: string;
+  duration_minutes: number;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -206,6 +237,12 @@ export const apiClient = {
           successRate: 95, // Mock for now
           avgResponseTime: 250 // Mock for now
         },
+        conversations: {
+          total: 0, // Will be replaced with real data
+          active: 0,
+          completed: 0,
+          failed: 0
+        },
         security: {
           threats: 0, // Mock for now
           riskLevel: 'Low' as const,
@@ -222,6 +259,10 @@ export const apiClient = {
           costPerAgent: operations.active_agents?.length > 0 ? 
             (llmUsage.summary?.total_cost || 0) / operations.active_agents.length : 0
         },
+        quality: {
+          avgScore: 4.2, // Mock for now
+          totalRated: 10
+        },
         system: {
           cpu: Math.floor(Math.random() * 30) + 50,
           memory: Math.floor(Math.random() * 30) + 60,
@@ -236,6 +277,7 @@ export const apiClient = {
       // Return mock data as fallback
       return {
         agents: { active: 0, total: 0, successRate: 0, avgResponseTime: 0 },
+        conversations: { total: 0, active: 0, completed: 0, failed: 0 },
         security: { 
           threats: 0, 
           riskLevel: 'Low', 
@@ -243,6 +285,7 @@ export const apiClient = {
           security_flags: { pii_detected: 0, tamper_detected: 0, compliance_violation: 0 }
         },
         costs: { totalTokens: 0, monthlyCost: 0, costPerAgent: 0 },
+        quality: { avgScore: 0, totalRated: 0 },
         system: { cpu: 0, memory: 0, uptime: 0 }
       };
     }
@@ -369,6 +412,57 @@ export const apiClient = {
 
     getOperationsOverview: async () => {
       const response = await api.get<ApiResponse<OperationsOverview>>('/agents/operations/overview');
+      return response.data;
+    }
+  },
+
+  // Conversation operations
+  conversations: {
+    start: async (data: any) => {
+      const response = await api.post<ApiResponse<any>>('/conversations/start', data);
+      return response.data;
+    },
+
+    end: async (data: any) => {
+      const response = await api.post<ApiResponse<any>>('/conversations/end', data);
+      return response.data;
+    },
+
+    addMessage: async (data: any) => {
+      const response = await api.post<ApiResponse<any>>('/conversations/message', data);
+      return response.data;
+    },
+
+    getActive: async () => {
+      const response = await api.get<ApiResponse<ActiveConversation[]>>('/conversations/active');
+      return response.data;
+    },
+
+    getHistory: async (sessionId: string) => {
+      const response = await api.get<ApiResponse<any[]>>(`/conversations/${sessionId}/history`);
+      return response.data;
+    }
+  },
+
+  // Metrics operations
+  metrics: {
+    getOverview: async () => {
+      const response = await api.get<ApiResponse<MetricsOverview[]>>('/metrics/overview');
+      return response.data;
+    },
+
+    getSuccessRates: async () => {
+      const response = await api.get<ApiResponse<any[]>>('/metrics/success-rates');
+      return response.data;
+    },
+
+    getResponseTimes: async () => {
+      const response = await api.get<ApiResponse<any[]>>('/metrics/response-times');
+      return response.data;
+    },
+
+    getQuality: async () => {
+      const response = await api.get<ApiResponse<any[]>>('/metrics/quality');
       return response.data;
     }
   }

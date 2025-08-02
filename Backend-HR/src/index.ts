@@ -15,6 +15,8 @@ import { agentTrackingRoutes } from './routes/agent-tracking';
 import { dashboardRoutes } from './routes/dashboard';
 import { apiKeyRoutes } from './routes/api-keys';
 import { llmAnalyticsRoutes } from './routes/llm-analytics';
+import conversationRoutes from './routes/conversations';
+import metricsRoutes from './routes/metrics';
 import { errorHandler } from './middleware/errorHandler';
 import { logger } from './utils/logger';
 import { initializeDatabase } from './lib/database-init';
@@ -120,6 +122,8 @@ app.use('/api/sdk', agentTrackingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/admin/api-keys', apiKeyRoutes);
 app.use('/api/llm-usage', llmAnalyticsRoutes);
+app.use('/api/conversations', conversationRoutes);
+app.use('/api/metrics', metricsRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

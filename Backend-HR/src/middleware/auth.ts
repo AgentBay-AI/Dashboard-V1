@@ -89,9 +89,19 @@ export async function authenticateApiKey(
 
     // Attach client info to request
     req.clientId = apiKeyData.client_id;
-    req.clientPermissions = Array.isArray(apiKeyData.permissions) 
-      ? apiKeyData.permissions 
-      : JSON.parse(apiKeyData.permissions || '["read", "write"]');
+    logger.debug('Raw API key data:', { apiKeyData });
+    logger.debug('Raw permissions:', { permissions: apiKeyData.permissions });
+    
+    try {
+      req.clientPermissions = Array.isArray(apiKeyData.permissions) 
+        ? apiKeyData.permissions 
+        : JSON.parse(apiKeyData.permissions || '["read", "write"]');
+      logger.debug('Parsed permissions:', { clientPermissions: req.clientPermissions });
+    } catch (error) {
+      logger.error('Failed to parse permissions:', { error, permissions: apiKeyData.permissions });
+      req.clientPermissions = ['read', 'write']; // Default permissions on error
+    }
+    
     req.rateLimitPerMinute = apiKeyData.rate_limit_per_minute;
 
     logger.info('API key authenticated successfully', {
@@ -112,7 +122,18 @@ export async function authenticateApiKey(
 
 export function requirePermission(permission: string) {
   return (req: AuthenticatedRequest, res: Response, next: NextFunction): any => {
+    logger.debug('Checking permission:', { 
+      required: permission,
+      clientPermissions: req.clientPermissions,
+      clientId: req.clientId
+    });
+    
     if (!req.clientPermissions?.includes(permission)) {
+      logger.warn('Permission denied:', {
+        required: permission,
+        clientPermissions: req.clientPermissions,
+        clientId: req.clientId
+      });
       return res.status(403).json({
         error: 'Insufficient permissions',
         message: `This operation requires '${permission}' permission`

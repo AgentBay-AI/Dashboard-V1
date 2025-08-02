@@ -36,50 +36,34 @@ export const agentActivitySchema = z.object({
 
 // Conversation Schemas
 export const conversationStartSchema = z.object({
-  session_id: sessionIdSchema,
+  session_id: z.string().min(1),
   agent_id: agentIdSchema,
-  timestamp: timestampSchema,
   client_id: clientIdSchema,
-  run_id: z.string().optional(),
-  user_id: z.string().optional(),
-  metadata: z.object({
-    conversation_type: z.string().optional(),
-    channel: z.string().optional(),
-    priority: z.enum(['low', 'normal', 'high', 'critical']).optional()
-  }).optional(),
-  security_flags: z.object({
-    tamper_detected: z.boolean().optional(),
-    pii_detected: z.boolean().optional(),
-    compliance_violation: z.boolean().optional()
-  }).optional()
+  metadata: z.record(z.any()).optional().default({})
 });
 
 export const conversationEndSchema = z.object({
-  session_id: sessionIdSchema,
-  timestamp: timestampSchema,
-  client_id: clientIdSchema,
-  outcome: z.enum(['resolved', 'escalated', 'failed', 'timeout']).optional(),
-  quality_score: z.enum(['poor', 'fair', 'good', 'excellent']).optional(),
-  response_time_ms: z.number().min(0).optional(),
-  user_satisfaction: z.number().min(0).max(5).optional(),
-  metadata: z.object({
-    resolution_steps: z.number().optional(),
-    escalation_reason: z.string().optional(),
-    final_status: z.string().optional()
-  }).optional(),
-  security_flags: z.object({
-    tamper_detected: z.boolean().optional(),
-    pii_detected: z.boolean().optional(),
-    compliance_violation: z.boolean().optional()
-  }).optional()
+  session_id: z.string().min(1),
+  end_time: timestampSchema.optional(),
+  quality_score: z.number().min(1).max(5).optional(),
+  metadata: z.record(z.any()).optional().default({})
+});
+
+export const conversationMessageSchema = z.object({
+  session_id: z.string().min(1),
+  agent_id: agentIdSchema,
+  message_type: z.enum(['user', 'assistant', 'system']),
+  content: z.string().optional(),
+  response_time_ms: z.number().optional(),
+  token_count: z.number().optional(),
+  metadata: z.record(z.any()).optional().default({})
 });
 
 export const conversationResumeSchema = z.object({
-  session_id: sessionIdSchema,
+  session_id: z.string().min(1),
   agent_id: agentIdSchema,
-  timestamp: timestampSchema,
   client_id: clientIdSchema,
-  resume_reason: z.string()
+  metadata: z.record(z.any()).optional().default({})
 });
 
 export const conversationLocalExpiredSchema = z.object({
@@ -95,16 +79,17 @@ export const conversationLocalExpiredSchema = z.object({
 });
 
 export const failedSessionSchema = z.object({
-  session_id: sessionIdSchema,
-  agent_id: z.string().optional(),
-  timestamp: timestampSchema,
+  session_id: z.string().min(1),
+  agent_id: agentIdSchema.optional(),
   client_id: clientIdSchema,
-  failure_reason: z.string(),
-  error_details: z.object({
-    error_code: z.string().optional(),
-    error_message: z.string().optional(),
-    stack_trace: z.string().optional()
-  }).optional()
+  failure_reason: z.string().min(1),
+  error_details: z.record(z.any()).optional().default({})
+});
+
+export const sessionUpdateSchema = z.object({
+  session_id: z.string().min(1),
+  status: z.enum(['expired', 'evicted']),
+  metadata: z.record(z.any()).optional().default({})
 });
 
 // Security Schemas

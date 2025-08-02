@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
-import { apiClient } from "@/lib/api";
+import { apiClient, LLMUsageData } from "@/lib/api";
 
 // Default data structure for fallback
 const defaultPerformanceData = [
@@ -190,46 +190,106 @@ export const SystemHealthChart = () => {
 };
 
 export const CostBreakdownChart = () => {
+  const [llmUsageData, setLlmUsageData] = useState<LLMUsageData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const data = await apiClient.llm.getUsageAggregated('24h');
+        console.log('LLM Usage Data:', data); // Debug log
+        setLlmUsageData(data);
+      } catch (error) {
+        console.error('Failed to fetch LLM usage data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 30000); // Refresh every 30s
+    return () => clearInterval(interval);
+  }, []);
+
+  // Transform LLM usage data into pie chart format
+  const chartData = useMemo(() => {
+    if (!llmUsageData?.detailed) return [];
+    
+    return Object.entries(llmUsageData.detailed).flatMap(([provider, models]) =>
+      Object.entries(models).map(([model, data]) => {
+        const percentage = (data.cost / (llmUsageData.summary?.total_cost || 1)) * 100;
+        return {
+          name: `${provider} ${model}`,
+          value: data.cost, // Use actual cost as value
+          displayValue: percentage.toFixed(2), // Store percentage for display
+          cost: data.cost.toFixed(4),
+          tokens: data.input_tokens + data.output_tokens,
+          requests: data.request_count
+        };
+      })
+    );
+  }, [llmUsageData]);
+
+  console.log('Chart Data:', chartData); // Debug log
+
   return (
     <div className="w-full">
-      <ResponsiveContainer width="100%" height={300}>
-        <PieChart>
-          <Pie
-            data={costBreakdownData}
-            cx="50%"
-            cy="50%"
-            innerRadius={60}
-            outerRadius={100}
-            paddingAngle={5}
-            dataKey="cost"
-          >
-            {costBreakdownData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-            ))}
-          </Pie>
-          <Tooltip 
-            content={({ active, payload }) => {
-              if (active && payload && payload.length) {
-                const data = payload[0].payload;
-                return (
-                  <div className="bg-popover border border-border rounded-lg p-3 shadow-lg animate-fade-in">
-                    <p className="font-medium text-foreground">{data.name}</p>
-                    <p className="text-sm text-muted-foreground">Cost Breakdown Analysis</p>
-                    <p className="text-sm" style={{ color: payload[0].color }}>
-                      Cost: ${data.cost}
-                    </p>
-                    <p className="text-sm" style={{ color: payload[0].color }}>
-                      Percentage: {data.value}%
-                    </p>
-                  </div>
-                );
-              }
-              return null;
-            }}
-          />
-          <Legend />
-        </PieChart>
-      </ResponsiveContainer>
+      {loading ? (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          Loading cost data...
+        </div>
+      ) : chartData.length > 0 ? (
+        <ResponsiveContainer width="100%" height={300}>
+          <PieChart>
+            <Pie
+              data={chartData}
+              cx="50%"
+              cy="50%"
+              innerRadius={60}
+              outerRadius={100}
+              paddingAngle={5}
+              dataKey="value"
+              nameKey="name"
+              label={({ name, displayValue }) => `${name} (${displayValue}%)`}
+            >
+              {chartData.map((entry, index) => (
+                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              ))}
+            </Pie>
+            <Tooltip 
+              content={({ active, payload }) => {
+                if (active && payload && payload.length) {
+                  const data = payload[0].payload;
+                  return (
+                    <div className="bg-popover border border-border rounded-lg p-3 shadow-lg animate-fade-in">
+                      <p className="font-medium text-foreground">{data.name}</p>
+                      <p className="text-sm text-muted-foreground">Cost Breakdown Analysis</p>
+                      <p className="text-sm" style={{ color: payload[0].color }}>
+                        Cost: ${data.cost}
+                      </p>
+                      <p className="text-sm" style={{ color: payload[0].color }}>
+                        Percentage: {data.displayValue}%
+                      </p>
+                      <p className="text-sm" style={{ color: payload[0].color }}>
+                        Total Tokens: {data.tokens.toLocaleString()}
+                      </p>
+                      <p className="text-sm" style={{ color: payload[0].color }}>
+                        Requests: {data.requests}
+                      </p>
+                    </div>
+                  );
+                }
+                return null;
+              }}
+            />
+            <Legend formatter={(value) => value.split(' ')[0]} /> {/* Show only provider name in legend */}
+          </PieChart>
+        </ResponsiveContainer>
+      ) : (
+        <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+          No cost data available
+        </div>
+      )}
     </div>
   );
 };
