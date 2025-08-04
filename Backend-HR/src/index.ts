@@ -10,6 +10,7 @@ import apiKeyRoutes from './routes/api-keys';
 import conversationRoutes from './routes/conversations';
 import metricsRoutes from './routes/metrics';
 import { llmAnalyticsRoutes } from './routes/llm-analytics';
+import agentsRouter from './routes/agents';
 import { addTraceContext } from './middleware/tracing';
 
 const app = express();
@@ -30,6 +31,7 @@ app.use((req, res, next) => {
 });
 
 // Routes
+app.use('/api/agents', agentsRouter);
 app.use('/api/agents', agentRoutes);
 app.use('/api/keys', apiKeyRoutes);
 app.use('/api/conversations', conversationRoutes);

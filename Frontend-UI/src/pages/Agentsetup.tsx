@@ -94,8 +94,25 @@ const AgentSetup = () => {
     setCurrentStep(nextStep);
   };
 
-  const handleCompleteSetup = () => {
+  const handleCompleteSetup = async () => {
+    try {
+      // Create agent in database
+      const response = await apiClient.agents.create({
+        agentName: setupData.agentName,
+        agentDescription: setupData.agentDescription,
+        agentType: setupData.agentType,
+        agentUseCase: setupData.agentUseCase,
+        llmProviders: setupData.llmProviders,
+        platform: setupData.platform
+      });
+
+      console.log('Agent created successfully:', response);
+      navigate('/dashboard');
+    } catch (error) {
+      console.error('Failed to create agent:', error);
+      // Still navigate to dashboard even if creation fails
     navigate('/dashboard');
+    }
   };
 
   const platforms = [

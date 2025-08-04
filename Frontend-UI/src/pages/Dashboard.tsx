@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +13,7 @@ import {
   AgentActivityChart,
   SessionDurationChart 
 } from "@/components/Charts";
-import { apiClient, DashboardOverview, LLMUsageData, TopModel, MetricsOverview } from "@/lib/api";
+import { apiClient, DashboardOverview, LLMUsageData, TopModel, MetricsOverview, Agent } from "@/lib/api";
 import { 
   Activity, 
   Users, 
@@ -76,8 +76,8 @@ const Dashboard = () => {
     }
   });
   const [llmUsageData, setLlmUsageData] = useState<LLMUsageData | null>(null);
-  const [topModels, setTopModels] = useState<TopModel[]>([]);
   const [metricsData, setMetricsData] = useState<MetricsOverview[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Fetch dashboard data from backend
@@ -87,20 +87,26 @@ const Dashboard = () => {
         console.log('Dashboard: Starting data fetch...');
         setLoading(true);
         
-        const [operationsResponse, llmUsage, metricsResponse] = await Promise.all([
+        const [operationsResponse, llmUsage, metricsResponse, agentsResponse] = await Promise.all([
           apiClient.agents.getOperationsOverview(),
           apiClient.llm.getUsageAggregated('24h'),
-          apiClient.metrics.getOverview()
+          apiClient.metrics.getOverview(),
+          apiClient.agents.getActive()
         ]);
         
         console.log('Dashboard: Received data:', {
           operations: operationsResponse,
           llmUsage,
-          metrics: metricsResponse
+          metrics: metricsResponse,
+          agents: agentsResponse
         });
+
+        // Set agents data
+        setAgents(agentsResponse?.data || []);
 
         // Calculate success rate and average response time from metrics
         const metrics = metricsResponse?.data || [];
+        console.log('Raw metrics:', metrics);
         
         // Find agent with valid metrics (has sessions and non-null values)
         const validAgent = metrics.find(m => 
@@ -108,10 +114,12 @@ const Dashboard = () => {
           m.success_rate_percent !== null && 
           m.avg_response_time_ms !== null
         );
+        console.log('Valid agent:', validAgent);
 
         // Use the valid agent's metrics directly
         const successRate = validAgent?.success_rate_percent || 0;
         const responseTime = validAgent?.avg_response_time_ms || 0;
+        console.log('Extracted metrics:', { successRate, responseTime });
 
         // Calculate quality metrics
         const qualityMetrics = metrics.reduce((acc, agent) => {
@@ -124,10 +132,10 @@ const Dashboard = () => {
 
         const dashboardOverview: DashboardOverview = {
           agents: {
-            active: operationsResponse?.data?.active_agents?.length || 0,
-            total: operationsResponse?.data?.active_agents?.length || 0,
-            successRate: successRate,
-            avgResponseTime: responseTime
+            active: agentsResponse?.data?.length || 0,
+            total: agentsResponse?.data?.length || 0,
+            successRate: Number(successRate.toFixed(2)),
+            avgResponseTime: Number(responseTime.toFixed(2))
           },
           conversations: {
             total: metrics.reduce((acc, agent) => acc + (agent.total_sessions || 0), 0),
@@ -355,10 +363,66 @@ const Dashboard = () => {
 
           {/* Agents Tab */}
           <TabsContent value="agents" className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2">
-              <ActiveAgents />
-              <AgentActivityLog />
-            </div>
+            {/* Active Agents Section */}
+            <Card className="animate-fade-in" style={{ animationDelay: "0.7s" }}>
+              <CardHeader>
+                <CardTitle>Active Agents</CardTitle>
+                <CardDescription>Currently running AI agents</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="animate-pulse flex items-center space-x-4">
+                        <div className="h-3 w-3 bg-gray-300 rounded-full"></div>
+                        <div className="space-y-2 flex-1">
+                          <div className="h-4 bg-gray-300 rounded w-3/4"></div>
+                          <div className="h-3 bg-gray-300 rounded w-1/2"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {agents.length > 0 ? (
+                      // Show real agents from database
+                      agents.map((agent, i) => (
+                        <div key={agent.agent_id || agent.id} className="flex items-center space-x-4 p-4 rounded-lg border">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <div className="flex-1">
+                            <h3 className="font-medium">
+                              {agent.metadata?.name || agent.name || `Agent ${agent.agent_id}`}
+                            </h3>
+                            <p className="text-sm text-muted-foreground">
+                              {agent.metadata?.type || agent.type || 'AI Agent'} • {agent.status}
+                            </p>
+                            {(agent.metadata?.description || agent.description) && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {agent.metadata?.description || agent.description}
+                              </p>
+                            )}
+                          </div>
+                          <Badge variant={agent.status === 'active' ? 'default' : 'secondary'}>
+                            {agent.status}
+                          </Badge>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="mx-auto w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                          <Users className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                        <h3 className="text-lg font-medium mb-2">No agents yet</h3>
+                        <p className="text-muted-foreground">
+                          No AI agents are currently registered
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            <AgentActivityLog />
 
             <Card>
               <CardHeader>

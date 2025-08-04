@@ -27,45 +27,35 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 -- Create agents table
 CREATE TABLE IF NOT EXISTS agents (
-    agent_id VARCHAR(255) PRIMARY KEY,
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    type VARCHAR(50) NOT NULL,
+    capabilities TEXT,
+    llm_providers JSONB,
+    platform VARCHAR(100),
     client_id VARCHAR(255) NOT NULL REFERENCES api_keys(client_id),
-    registration_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    sdk_version VARCHAR(50) NOT NULL,
-    metadata JSONB,
-    trace_id VARCHAR(255),
-    span_id VARCHAR(255),
-    trace_context JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    status VARCHAR(50) DEFAULT 'active',
+    UNIQUE(client_id, name)
 );
 
--- Create agent_status table
+-- Create agent status table
 CREATE TABLE IF NOT EXISTS agent_status (
-    id BIGSERIAL PRIMARY KEY,
-    agent_id VARCHAR(255) REFERENCES agents(agent_id),
+    agent_id VARCHAR(255) PRIMARY KEY REFERENCES agents(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL DEFAULT 'online',
+    last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     client_id VARCHAR(255) NOT NULL REFERENCES api_keys(client_id),
-    status VARCHAR(50) NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-    metadata JSONB,
-    trace_id VARCHAR(255),
-    span_id VARCHAR(255),
-    trace_context JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    UNIQUE(agent_id, client_id)
 );
 
--- Create agent_activity table
+-- Create agent activity table
 CREATE TABLE IF NOT EXISTS agent_activity (
-    id BIGSERIAL PRIMARY KEY,
-    agent_id VARCHAR(255) REFERENCES agents(agent_id),
+    id SERIAL PRIMARY KEY,
+    agent_id VARCHAR(255) REFERENCES agents(id) ON DELETE CASCADE,
     client_id VARCHAR(255) NOT NULL REFERENCES api_keys(client_id),
-    activity_type VARCHAR(100) NOT NULL,
-    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+    activity_type VARCHAR(50) NOT NULL,
     details JSONB,
-    duration INTEGER,
-    trace_id VARCHAR(255),
-    span_id VARCHAR(255),
-    trace_context JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

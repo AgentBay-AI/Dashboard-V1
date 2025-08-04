@@ -165,10 +165,26 @@ export interface TopModel {
 
 export interface Agent {
   agent_id: string;
+  id?: string;
+  name?: string;
+  description?: string;
+  type?: string;
+  capabilities?: string;
+  llm_providers?: string[];
+  platform?: string;
   status: string;
   registration_time: string;
   sdk_version?: string;
   metadata: Record<string, any>;
+}
+
+interface CreateAgentData {
+  agentName: string;
+  agentDescription?: string;
+  agentType: string;
+  agentUseCase?: string;
+  llmProviders?: string[];
+  platform?: string;
 }
 
 export interface AgentActivity {
@@ -417,6 +433,11 @@ export const apiClient = {
 
     getOperationsOverview: async () => {
       const response = await api.get<ApiResponse<OperationsOverview>>('/agents/operations/overview');
+      return response.data;
+    },
+
+    create: async (data: CreateAgentData) => {
+      const response = await api.post<ApiResponse<Agent>>('/agents', data);
       return response.data;
     }
   },
