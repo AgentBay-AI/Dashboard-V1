@@ -3,7 +3,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import LineBackground from "@/components/LineBackground";
 import Header from "@/components/Header";
-import DashboardPreview from "@/components/DashboardPreview";
 import { PerformanceChart, CostBreakdownChart } from "@/components/Charts";
 import { Link } from "react-router-dom";
 import { ArrowRight, Zap, Shield, BarChart3, DollarSign, Star, Check, Activity } from "lucide-react";
@@ -60,7 +59,7 @@ const Index = () => {
               </Badge>
               <h1 className="text-5xl lg:text-7xl font-bold tracking-tight">
                 AI HR Agent
-                <span className="block text-muted-foreground">for your AI Agents</span>
+                <span className="block text-muted-foreground">Analytics Dashboard</span>
               </h1>
               <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
                 Monitor performance, track costs, ensure security, and optimize your AI agents with real-time analytics and comprehensive insights.
@@ -102,20 +101,18 @@ const Index = () => {
           </div>
         </section>
 
-        {/* Interactive Dashboard Preview */}
+        {/* Chart Preview Section */}
         <section className="py-20 px-6">
           <div className="max-w-6xl mx-auto">
             <div className="text-center mb-16 animate-fade-in">
-              <h2 className="text-4xl font-bold mb-4">Interactive Dashboard Preview</h2>
+              <h2 className="text-4xl font-bold mb-4">Analytics Preview</h2>
               <p className="text-xl text-muted-foreground">
-                Experience real-time analytics with hover interactions and animated insights
+                Experience real-time analytics with live data visualization
               </p>
             </div>
             
-            <DashboardPreview />
-            
             {/* Chart Preview Section */}
-            <div className="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <Card className="p-6 bg-card/50 backdrop-blur border-border/50">
                 <div className="flex items-center gap-2 mb-4">
                   <Activity className="h-5 w-5 text-primary" />
@@ -198,13 +195,11 @@ const Index = () => {
           </div>
         </section>
 
-
-
         {/* Footer */}
         <footer className="py-12 px-6 border-t bg-card">
           <div className="max-w-4xl mx-auto text-center">
             <p className="text-muted-foreground">
-              © 2024 Analytics Dashboard. Built for the future of AI monitoring.
+              © 2024 AI HR Analytics. Built for the future of AI monitoring.
             </p>
           </div>
         </footer>
