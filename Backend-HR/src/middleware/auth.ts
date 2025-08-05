@@ -1,22 +1,22 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import crypto from 'crypto';
 import { supabase } from '../lib/supabase';
 import { logger } from '../utils/logger';
 
 export interface AuthenticatedRequest extends Request {
-    clientId?: string;
-    clientPermissions?: string[];
+    clientId: string;
+    permissions: string[];
     rateLimitPerMinute?: number;
     traceId?: string;
     spanId?: string;
     traceContext?: any;
 }
 
-export async function authenticateApiKey(
-    req: AuthenticatedRequest,
+export const authenticateApiKey: RequestHandler = async (
+    req: Request,
     res: Response,
     next: NextFunction
-): Promise<void> {
+): Promise<void> => {
     try {
         const authHeader = req.headers.authorization;
         
@@ -50,18 +50,17 @@ export async function authenticateApiKey(
             .eq('is_active', true)
             .single();
 
-        // Debug: Log database query result
-        logger.debug('API key lookup result:', { 
+        // Debug: Log database query results
+        logger.debug('Database query result:', {
             found: !!apiKeyData,
             error: error?.message,
-            clientId: apiKeyData?.client_id,
-            permissions: apiKeyData?.permissions
+            clientId: apiKeyData?.client_id
         });
 
         if (error || !apiKeyData) {
-            logger.warn('Invalid API key attempt', {
-                hashedKey,
-                ip: req.ip,
+            logger.warn('Invalid API key attempt:', {
+                hashedKey: hashedKey.substring(0, 8) + '...',
+                error: error?.message,
                 userAgent: req.headers['user-agent']
             });
             res.status(401).json({ error: 'Invalid API key', message: 'The provided API key is invalid or inactive' });
@@ -69,33 +68,34 @@ export async function authenticateApiKey(
         }
 
         // Attach client info to request
-        req.clientId = apiKeyData.client_id;
-        req.rateLimitPerMinute = apiKeyData.rate_limit_per_minute;
+        const authReq = req as AuthenticatedRequest;
+        authReq.clientId = apiKeyData.client_id;
+        authReq.rateLimitPerMinute = apiKeyData.rate_limit_per_minute;
 
         // Parse permissions
         try {
-            req.clientPermissions = Array.isArray(apiKeyData.permissions)
+            authReq.permissions = Array.isArray(apiKeyData.permissions)
                 ? apiKeyData.permissions
                 : JSON.parse(apiKeyData.permissions || '["read", "write"]');
             
             // Debug: Log parsed permissions
             logger.debug('Parsed permissions:', {
                 raw: apiKeyData.permissions,
-                parsed: req.clientPermissions
+                parsed: authReq.permissions
             });
         } catch (error) {
             logger.error('Failed to parse permissions:', {
                 error,
                 permissions: apiKeyData.permissions
             });
-            req.clientPermissions = ['read', 'write'];
+            authReq.permissions = ['read', 'write'];
         }
 
         // Debug: Log final request state
         logger.debug('Request authenticated:', {
-            clientId: req.clientId,
-            permissions: req.clientPermissions,
-            rateLimit: req.rateLimitPerMinute
+            clientId: authReq.clientId,
+            permissions: authReq.permissions,
+            rateLimit: authReq.rateLimitPerMinute
         });
 
         next();
@@ -103,22 +103,24 @@ export async function authenticateApiKey(
         logger.error('Authentication error:', error);
         res.status(500).json({ error: 'Internal server error', message: 'An error occurred during authentication' });
     }
-}
+};
 
-export function requirePermission(permission: string) {
-    return (req: AuthenticatedRequest, res: Response, next: NextFunction): any => {
+export function requirePermission(permission: string): RequestHandler {
+    return (req: Request, res: Response, next: NextFunction): any => {
+        const authReq = req as AuthenticatedRequest;
+        
         // Debug: Log permission check
         logger.debug('Checking permission:', {
             required: permission,
-            clientPermissions: req.clientPermissions,
-            clientId: req.clientId
+            permissions: authReq.permissions,
+            clientId: authReq.clientId
         });
 
-        if (!req.clientPermissions?.includes(permission)) {
+        if (!authReq.permissions?.includes(permission)) {
             logger.warn('Permission denied:', {
                 required: permission,
-                clientPermissions: req.clientPermissions,
-                clientId: req.clientId
+                permissions: authReq.permissions,
+                clientId: authReq.clientId
             });
             return res.status(403).json({
                 error: 'Insufficient permissions',
