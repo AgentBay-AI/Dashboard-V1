@@ -9,8 +9,10 @@ import agentRoutes from './routes/agent-tracking';
 import apiKeyRoutes from './routes/api-keys';
 import conversationRoutes from './routes/conversations';
 import metricsRoutes from './routes/metrics';
-import { llmAnalyticsRoutes } from './routes/llm-analytics';
+import llmAnalyticsRoutes from './routes/llm-analytics';
 import agentsRouter from './routes/agents';
+import organizationsRouter from './routes/organizations';
+import setupOrgsRouter from './routes/setup-organizations';
 import { addTraceContext } from './middleware/tracing';
 
 const app = express();
@@ -37,6 +39,8 @@ app.use('/api/keys', apiKeyRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/metrics', metricsRoutes);
 app.use('/api/llm-usage', llmAnalyticsRoutes);
+app.use('/api/organizations', organizationsRouter);
+app.use('/api/setup', setupOrgsRouter); // Temporary setup endpoint
 
 // Health check
 app.get('/health', (req, res) => {
