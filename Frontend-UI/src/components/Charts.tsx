@@ -49,9 +49,16 @@ const agentActivityData = [
 
 const COLORS = ['hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))', 'hsl(var(--chart-4))', 'hsl(var(--chart-5))'];
 
+interface TooltipPayload {
+  value: number | string;
+  name: string;
+  color: string;
+  unit?: string;
+}
+
 interface CustomTooltipProps {
   active?: boolean;
-  payload?: any[];
+  payload?: TooltipPayload[];
   label?: string;
   description?: string;
 }
@@ -76,7 +83,7 @@ const CustomTooltip = ({ active, payload, label, description }: CustomTooltipPro
 };
 
 export const PerformanceChart = () => {
-  const [hoveredData, setHoveredData] = useState<any>(null);
+  const [hoveredData, setHoveredData] = useState<unknown>(null);
   const [performanceData, setPerformanceData] = useState(defaultPerformanceData);
 
   useEffect(() => {

@@ -16,7 +16,7 @@ const Setup = () => {
   const handleNext = () => {
     console.log("Navigating to:", setupData.choice); // Debug log
     if (setupData.choice === "organization") {
-      navigate("/organisation");
+      navigate("/organization-setup");
     } else if (setupData.choice === "agent") {
       navigate("/agent-setup");
     }

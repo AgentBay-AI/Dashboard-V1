@@ -1,12 +1,11 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080/api';
-const API_KEY = import.meta.env.VITE_API_KEY || 'test_key_12345';
+const API_KEY = import.meta.env.VITE_API_KEY;
 
 console.log('API Configuration:', {
   API_BASE_URL,
-  API_KEY: API_KEY ? `${API_KEY.substring(0, 10)}...` : 'NOT SET',
-  env: import.meta.env
+  API_KEY: API_KEY ? `${API_KEY.substring(0, 10)}...` : 'NOT SET'
 });
 
 const api = axios.create({

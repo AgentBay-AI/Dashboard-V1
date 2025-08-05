@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +39,7 @@ import axios from 'axios';
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const { theme, setTheme } = useTheme();
+  const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState({
     agents: {
       active: 0,
@@ -188,11 +190,11 @@ const Dashboard = () => {
             >
               {theme === "light" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
             </Button>
-            <Button variant="outline" size="sm" className="hidden sm:flex">
+            <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => navigate('/agent-setup')}>
               <Plus className="mr-2 h-4 w-4" />
               Add Agent
             </Button>
-            <Button variant="outline" size="sm" className="hidden sm:flex">
+            <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => navigate('/organization-setup')}>
               <Plus className="mr-2 h-4 w-4" />
               Add Organisation
             </Button>
