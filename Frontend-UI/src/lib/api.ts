@@ -310,8 +310,15 @@ export const apiClient = {
   // Performance data
   getPerformanceData: async (filters?: { organization_id?: string; agent_id?: string }): Promise<PerformanceData[]> => {
     try {
-      const { data } = await api.get('/dashboard/performance', { params: filters });
-      return data.performance_data || data.data || [];
+      const params = { timeframe: '24h', ...(filters || {}) } as any;
+      const { data } = await api.get('/dashboard/performance', { params });
+      const rows = data?.data || data?.performance_data || [];
+      return (rows as any[]).map((r) => ({
+        time: r.time || (r.timestamp ? new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''),
+        successRate: r.success_rate ?? r.successRate ?? 0,
+        responseTime: r.responseTime ?? (typeof r.latency === 'number' ? r.latency / 1000 : (typeof r.average_latency === 'number' ? r.average_latency / 1000 : 0)),
+        sessions: r.sessions ?? r.requests ?? r.total_requests ?? 0,
+      }));
     } catch (error) {
       console.error('Failed to fetch performance data:', error);
       return [];
