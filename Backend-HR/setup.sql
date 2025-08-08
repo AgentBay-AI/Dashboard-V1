@@ -2,6 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Drop domain tables and views but keep api_keys
+DROP VIEW IF EXISTS view_organization_overview CASCADE;
 DROP VIEW IF EXISTS view_success_rate CASCADE;
 DROP VIEW IF EXISTS view_avg_response_time CASCADE;
 DROP VIEW IF EXISTS view_quality_metrics CASCADE;
@@ -231,6 +232,65 @@ JOIN conversations c ON a.agent_id = c.agent_id
 JOIN messages m ON c.session_id = m.session_id
 WHERE m.metadata->>'quality_score' IS NOT NULL
 GROUP BY a.agent_id, a.client_id;
+
+-- Organization overview view (agents count, sessions, monthly/yearly usage, monthly breakdown JSON)
+CREATE VIEW view_organization_overview AS
+WITH usage_month AS (
+  SELECT a.organization_id, SUM(l.cost) AS monthly_usage
+  FROM llm_usage l
+  JOIN agents a ON a.agent_id = l.agent_id
+  WHERE l.timestamp >= date_trunc('month', now())
+  GROUP BY a.organization_id
+),
+usage_year AS (
+  SELECT a.organization_id, SUM(l.cost) AS yearly_usage
+  FROM llm_usage l
+  JOIN agents a ON a.agent_id = l.agent_id
+  WHERE l.timestamp >= date_trunc('year', now())
+  GROUP BY a.organization_id
+),
+usage_breakdown AS (
+  SELECT t.organization_id,
+         jsonb_object_agg(t.ym, t.sum_cost) AS monthly_usage_breakdown
+  FROM (
+    SELECT a.organization_id,
+           to_char(date_trunc('month', l.timestamp), 'YYYY-MM') AS ym,
+           SUM(l.cost) AS sum_cost
+    FROM llm_usage l
+    JOIN agents a ON a.agent_id = l.agent_id
+    WHERE l.timestamp >= (date_trunc('month', now()) - interval '11 months')
+    GROUP BY a.organization_id, to_char(date_trunc('month', l.timestamp), 'YYYY-MM')
+    ORDER BY a.organization_id, ym
+  ) t
+  GROUP BY t.organization_id
+)
+SELECT
+  o.id,
+  o.name,
+  o.plan,
+  o.client_id,
+  o.description,
+  o.created_at,
+  COALESCE(a.agent_count, 0) AS agent_count,
+  COALESCE(s.total_sessions, 0) AS total_sessions,
+  COALESCE(m.monthly_usage, 0)::numeric AS monthly_usage,
+  COALESCE(y.yearly_usage, 0)::numeric AS yearly_usage,
+  COALESCE(b.monthly_usage_breakdown, '{}'::jsonb) AS monthly_usage_breakdown
+FROM organizations o
+LEFT JOIN (
+  SELECT organization_id, COUNT(*) AS agent_count
+  FROM agents
+  GROUP BY organization_id
+) a ON a.organization_id = o.id
+LEFT JOIN (
+  SELECT a.organization_id, COUNT(*) AS total_sessions
+  FROM conversations c
+  JOIN agents a ON a.agent_id = c.agent_id
+  GROUP BY a.organization_id
+) s ON s.organization_id = o.id
+LEFT JOIN usage_month m ON m.organization_id = o.id
+LEFT JOIN usage_year y ON y.organization_id = o.id
+LEFT JOIN usage_breakdown b ON b.organization_id = o.id;
 
 -- Optional: seed comment for admin bootstrap (no changes to api_keys here)
 -- INSERT INTO api_keys (...) VALUES (...); 

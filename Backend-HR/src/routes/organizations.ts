@@ -42,13 +42,13 @@ const createOrganization: RequestHandler = async (req: Request, res: Response) =
   }
 };
 
-// Get organizations for client (simple list)
+// Get organizations for client (overview)
 const getOrganizations: RequestHandler = async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { data: organizations, error } = await supabase
-      .from('organizations')
-      .select('id, name, plan, description, created_at')
+      .from('view_organization_overview')
+      .select('*')
       .eq('client_id', authReq.clientId)
       .order('created_at', { ascending: true });
 

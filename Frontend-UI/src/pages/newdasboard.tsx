@@ -132,6 +132,12 @@ const Dashboard = () => {
 
   const handleClearFilters = () => setFilters({});
 
+  const getOrganizationName = (organizationId?: string) => {
+    if (!organizationId) return 'N/A';
+    const org = organizations.find(o => o.id === organizationId);
+    return org?.name || 'N/A';
+  };
+
   return (
     <div className="min-h-screen bg-background relative">
       <LineBackground />
@@ -385,25 +391,24 @@ const Dashboard = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {agents.length > 0 ? agents.map((agent, index) => (
+                    {agents.length > 0 ? agents.map((agent: any, index: number) => (
                       <div key={index} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2">
                             <div className={`w-3 h-3 rounded-full ${
                               agent.status === 'active' ? 'bg-success' :
-                              agent.status === 'idle' ? 'bg-warning' :
-                              'bg-destructive'
+                              agent.status === 'idle' ? 'bg-warning' : 'bg-destructive'
                             }`} />
-                            <span className="font-medium">{agent.agent_id}</span>
+                            <span className="font-medium">{agent.name || agent.metadata?.name || 'Unnamed Agent'}</span>
                             <Badge variant="outline">{agent.status}</Badge>
                           </div>
-                          <p className="text-sm font-medium">{agent.metadata?.name || 'Unnamed Agent'}</p>
+                          <p className="text-xs text-muted-foreground">ID: {agent.agent_id}</p>
                           <p className="text-xs text-muted-foreground">Use Case: {agent.metadata?.useCase || 'N/A'}</p>
-                          <p className="text-xs text-muted-foreground">Organization: {agent.metadata?.organization || 'N/A'}</p>
+                          <p className="text-xs text-muted-foreground">Organization: {getOrganizationName(agent.organization_id)}</p>
                         </div>
                         <div className="text-right text-sm">
-                          <p className="font-medium">{agent.metadata?.sessions || 0} sessions</p>
-                          <p className="text-muted-foreground">SDK v{agent.sdk_version}</p>
+                          <p className="font-medium">0 sessions</p>
+                          <p className="text-muted-foreground">SDK v{agent.sdk_version || '1.0.0'}</p>
                         </div>
                       </div>
                     )) : (
@@ -429,20 +434,20 @@ const Dashboard = () => {
                       <div key={index} className="p-4 border rounded-lg hover:bg-muted/50 transition-colors">
                         <div className="flex justify-between items-start mb-2">
                           <h4 className="font-medium">{org.name}</h4>
-                          <Badge variant="outline">{org.plan}</Badge>
+                          <Badge variant="outline">Active</Badge>
                         </div>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="text-muted-foreground">Agents</p>
-                            <p className="font-medium">{org.agent_count}</p>
+                            <p className="font-medium">{(org as any).agent_count ?? '-'}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Sessions</p>
-                            <p className="font-medium">{org.total_sessions}</p>
+                            <p className="font-medium">{(org as any).total_sessions ?? '-'}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Monthly Usage</p>
-                            <p className="font-medium text-success">${org.monthly_usage}</p>
+                            <p className="font-medium text-success">${(org as any).monthly_usage ?? ''}</p>
                           </div>
                           <div>
                             <p className="text-muted-foreground">Status</p>
