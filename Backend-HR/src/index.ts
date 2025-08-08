@@ -15,6 +15,7 @@ import organizationsRouter from './routes/organizations';
 import setupOrgsRouter from './routes/setup-organizations';
 import { addTraceContext } from './middleware/tracing';
 import { analyticsApiRoutes } from './routes/analytics-api';
+import sdkRouter from './routes/sdk';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -43,6 +44,7 @@ app.use('/api/llm-usage', llmAnalyticsRoutes);
 app.use('/api/organizations', organizationsRouter);
 app.use('/api/setup', setupOrgsRouter); // Temporary setup endpoint
 app.use('/api/dashboard', analyticsApiRoutes);
+app.use('/api/sdk', sdkRouter);
 
 // Health check
 app.get('/health', (req, res) => {
