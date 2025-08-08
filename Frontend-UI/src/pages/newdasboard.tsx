@@ -40,7 +40,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
 
   const [filters, setFilters] = useState<{ organizationId?: string; agentId?: string }>({});
-  const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
+  const [organizations, setOrganizations] = useState<Array<any>>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
@@ -59,7 +59,7 @@ const Dashboard = () => {
     const fetchFilters = async () => {
       try {
         const orgRes = await axios.get(`${baseURL}/organizations`, { headers });
-        const orgs = (orgRes.data?.data || []).map((o: any) => ({ id: o.id, name: o.name }));
+        const orgs = (orgRes.data?.data || []);
         setOrganizations(orgs);
       } catch {}
     };
@@ -134,7 +134,7 @@ const Dashboard = () => {
 
   const getOrganizationName = (organizationId?: string) => {
     if (!organizationId) return 'N/A';
-    const org = organizations.find(o => o.id === organizationId);
+    const org = organizations.find((o: any) => o.id === organizationId);
     return org?.name || 'N/A';
   };
 
@@ -195,7 +195,7 @@ const Dashboard = () => {
             </SelectTrigger>
             <SelectContent>
               {agents.map((agent: any) => (
-                <SelectItem key={agent.agent_id} value={agent.agent_id}>{agent.metadata?.name || agent.agent_id}</SelectItem>
+                <SelectItem key={agent.agent_id} value={agent.agent_id}>{agent.name || agent.metadata?.name || agent.agent_id}</SelectItem>
               ))}
             </SelectContent>
           </Select>
