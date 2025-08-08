@@ -13,7 +13,7 @@ router.use(authenticateApiKey);
 const getAggregatedUsage: RequestHandler = async (req: Request, res: Response) => {
     const authReq = req as AuthenticatedRequest;
     try {
-        const { timeframe = '24h' } = req.query;
+        const { timeframe = '24h', organization_id, agent_id } = req.query as { timeframe?: string; organization_id?: string; agent_id?: string };
         let startDate = new Date();
         switch (timeframe) {
             case '1h': startDate.setHours(startDate.getHours() - 1); break;
@@ -23,11 +23,28 @@ const getAggregatedUsage: RequestHandler = async (req: Request, res: Response) =
             default: startDate.setDate(startDate.getDate() - 1);
         }
 
-        const { data: usage, error } = await supabase
+        let query = supabase
             .from('llm_usage')
             .select('*')
             .eq('client_id', authReq.clientId)
             .gte('timestamp', startDate.toISOString());
+        if (agent_id) query = query.eq('agent_id', agent_id);
+        if (organization_id) {
+            // Need to filter by agents in the organization
+            const { data: orgAgents } = await supabase
+              .from('agents')
+              .select('agent_id')
+              .eq('client_id', authReq.clientId)
+              .eq('organization_id', organization_id);
+            const ids = (orgAgents || []).map(a => a.agent_id);
+            if (ids.length > 0) {
+              query = query.in('agent_id', ids);
+            } else {
+              query = query.eq('agent_id', '___none___');
+            }
+        }
+
+        const { data: usage, error } = await query;
 
         if (error) throw error;
 
@@ -92,13 +109,26 @@ const getTopModels: RequestHandler = async (req: Request, res: Response) => {
     try {
         const limit = Number(req.query.limit || 10);
         const sortBy = String(req.query.sort_by || 'cost');
+        const { organization_id, agent_id } = req.query as { organization_id?: string; agent_id?: string };
 
-        const { data: usage, error } = await supabase
+        let query = supabase
             .from('llm_usage')
             .select('*')
             .eq('client_id', authReq.clientId)
             .order('timestamp', { ascending: false })
             .limit(5000);
+        if (agent_id) query = query.eq('agent_id', agent_id);
+        if (organization_id) {
+            const { data: orgAgents } = await supabase
+              .from('agents')
+              .select('agent_id')
+              .eq('client_id', authReq.clientId)
+              .eq('organization_id', organization_id);
+            const ids = (orgAgents || []).map(a => a.agent_id);
+            if (ids.length > 0) query = query.in('agent_id', ids); else query = query.eq('agent_id', '___none___');
+        }
+
+        const { data: usage, error } = await query;
         if (error) throw error;
 
         const byModel: Record<string, { provider: string; model: string; input_tokens: number; output_tokens: number; cost: number; request_count: number; }> = {};
