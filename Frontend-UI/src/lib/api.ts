@@ -23,7 +23,8 @@ api.interceptors.request.use((config: any) => {
     baseURL: config.baseURL,
     headers: {
       Authorization: config.headers.Authorization ? `${config.headers.Authorization.substring(0, 20)}...` : 'NOT SET'
-    }
+    },
+    params: config.params
   });
   return config;
 }, (error) => {
@@ -307,10 +308,10 @@ export const apiClient = {
   },
 
   // Performance data
-  getPerformanceData: async (): Promise<PerformanceData[]> => {
+  getPerformanceData: async (filters?: { organization_id?: string; agent_id?: string }): Promise<PerformanceData[]> => {
     try {
-      const { data } = await api.get('/dashboard/performance');
-      return data.performance_data || [];
+      const { data } = await api.get('/dashboard/performance', { params: filters });
+      return data.performance_data || data.data || [];
     } catch (error) {
       console.error('Failed to fetch performance data:', error);
       return [];
@@ -368,8 +369,8 @@ export const apiClient = {
 
   // LLM usage and cost data
   llm: {
-    getUsageAggregated: async (timeframe: string = '24h'): Promise<LLMUsageData> => {
-      const { data } = await api.get(`/llm-usage/aggregated?timeframe=${timeframe}`);
+    getUsageAggregated: async (timeframe: string = '24h', filters?: { organization_id?: string; agent_id?: string }): Promise<LLMUsageData> => {
+      const { data } = await api.get(`/llm-usage/aggregated`, { params: { timeframe, ...(filters || {}) } });
       return data;
     },
     getTopModels: async (limit: number = 10, sortBy: string = 'cost'): Promise<{ top_models: TopModel[] }> => {

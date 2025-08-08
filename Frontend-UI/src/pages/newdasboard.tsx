@@ -21,90 +21,75 @@ import {
   Shield, 
   DollarSign, 
   Clock, 
-  Cpu, 
+  Server, 
   Plus,
   Settings,
   TrendingUp,
-  AlertTriangle,
   Eye,
-  Server,
-  Zap,
   BarChart3,
   PieChart,
   Sun,
   Moon
 } from "lucide-react";
 import axios from 'axios';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
+
+  const [filters, setFilters] = useState<{ organizationId?: string; agentId?: string }>({});
+  const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
+  const [agents, setAgents] = useState<any[]>([]);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+
   const [dashboardData, setDashboardData] = useState({
-    agents: {
-      active: 0,
-      total: 0,
-      successRate: 0,
-      avgResponseTime: 0
-    },
-    security: {
-      threats: 0,
-      riskLevel: "Low",
-      complianceScore: 100
-    },
-    costs: {
-      totalTokens: 0,
-      monthlyCost: 0,
-      costPerAgent: 0
-    },
-    system: {
-      cpu: Math.floor(Math.random() * 30) + 50,
-      memory: Math.floor(Math.random() * 30) + 60,
-      uptime: 99.9
-    }
+    agents: { active: 0, total: 0, successRate: 0, avgResponseTime: 0 },
+    security: { threats: 0, riskLevel: "Low", complianceScore: 100 },
+    costs: { totalTokens: 0, monthlyCost: 0, costPerAgent: 0 },
+    system: { cpu: Math.floor(Math.random() * 30) + 50, memory: Math.floor(Math.random() * 30) + 60, uptime: 99.9 }
   });
-  const [organizations, setOrganizations] = useState([]);
-  const [agents, setAgents] = useState([]);
-  const [recentActivity, setRecentActivity] = useState([]);
+
+  const apiKey = import.meta.env.VITE_API_KEY;
+  const baseURL = import.meta.env.VITE_BACKEND_URL;
+  const headers = { Authorization: `Bearer ${apiKey}` };
+
+  useEffect(() => {
+    const fetchFilters = async () => {
+      try {
+        const orgRes = await axios.get(`${baseURL}/organizations`, { headers });
+        const orgs = (orgRes.data?.data || []).map((o: any) => ({ id: o.id, name: o.name }));
+        setOrganizations(orgs);
+      } catch {}
+    };
+    fetchFilters();
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const apiKey = import.meta.env.VITE_API_KEY;
-        const headers = { Authorization: `Bearer ${apiKey}` };
-        const baseURL = import.meta.env.VITE_BACKEND_URL;
+        const params: any = {};
+        if (filters.organizationId) params.organization_id = filters.organizationId;
+        if (filters.agentId) params.agent_id = filters.agentId;
 
-        // Fetch all required data
         const [agentsRes, metricsRes, llmUsageRes] = await Promise.all([
-          axios.get(`${baseURL}/agents/operations/overview`, { headers }),
-          axios.get(`${baseURL}/metrics/overview`, { headers }).catch(() => ({ data: [] })),
-          axios.get(`${baseURL}/llm-usage/aggregated?timeframe=24h`, { headers }).catch(() => ({ 
-            data: { summary: { total_input_tokens: 0, total_output_tokens: 0, total_cost: 0 } } 
-          }))
+          axios.get(`${baseURL}/agents/operations/overview`, { headers, params }),
+          axios.get(`${baseURL}/metrics/overview`, { headers }),
+          axios.get(`${baseURL}/llm-usage/aggregated`, { headers, params: { ...params, timeframe: '24h' } })
         ]);
 
-        // Fetch organizations if endpoint exists
-        let orgsData = [];
-        try {
-          const orgsRes = await axios.get(`${baseURL}/organizations`, { headers });
-          orgsData = orgsRes.data.data || [];
-        } catch (error) {
-          // Organizations endpoint might not exist yet, use mock data
-          orgsData = [
-            { name: "TechCorp Inc", plan: "Enterprise", agent_count: 1, total_sessions: 3, monthly_usage: 23 },
-            { name: "SalesForce Ltd", plan: "Professional", agent_count: 1, total_sessions: 0, monthly_usage: 0 },
-            { name: "HR Solutions", plan: "Basic", agent_count: 0, total_sessions: 0, monthly_usage: 0 },
-            { name: "MarketingPro", plan: "Professional", agent_count: 0, total_sessions: 0, monthly_usage: 0 }
-          ];
-        }
-
+        // Load agents for Agent selector
         const activeAgents = agentsRes.data.data.active_agents || [];
-        const successRateMetric = Array.isArray(metricsRes.data) ? 
-          metricsRes.data.find(m => m.success_rate_percent !== undefined) : null;
-        const responseTimeMetric = Array.isArray(metricsRes.data) ? 
-          metricsRes.data.find(m => m.avg_response_time_ms !== undefined) : null;
+        setAgents(activeAgents);
 
-        // Update dashboard data with real values
+        // Organizations list already loaded; optional: load org-scoped if needed
+
+        const successRateMetric = Array.isArray(metricsRes.data) ? 
+          metricsRes.data.find((m: any) => m.success_rate_percent !== undefined) : null;
+        const responseTimeMetric = Array.isArray(metricsRes.data) ? 
+          metricsRes.data.find((m: any) => m.avg_response_time_ms !== undefined) : null;
+
         setDashboardData({
           agents: {
             active: activeAgents.length,
@@ -112,66 +97,41 @@ const Dashboard = () => {
             successRate: successRateMetric ? parseFloat(successRateMetric.success_rate_percent) || 0 : 100,
             avgResponseTime: responseTimeMetric ? parseFloat(responseTimeMetric.avg_response_time_ms) / 1000 || 1.2 : 1.2
           },
-          security: {
-            threats: 0,
-            riskLevel: "Low",
-            complianceScore: 100
-          },
+          security: { threats: 0, riskLevel: "Low", complianceScore: 100 },
           costs: {
             totalTokens: (llmUsageRes.data.summary?.total_input_tokens || 0) + (llmUsageRes.data.summary?.total_output_tokens || 0),
             monthlyCost: llmUsageRes.data.summary?.total_cost || 0,
             costPerAgent: activeAgents.length > 0 ? (llmUsageRes.data.summary?.total_cost || 0) / activeAgents.length : 0
           },
-          system: {
-            cpu: Math.floor(Math.random() * 30) + 50,
-            memory: Math.floor(Math.random() * 30) + 60,
-            uptime: 99.9
-          }
+          system: { cpu: Math.floor(Math.random() * 30) + 50, memory: Math.floor(Math.random() * 30) + 60, uptime: 99.9 }
         });
 
-        setOrganizations(orgsData);
-        setAgents(activeAgents);
-        
         // Format recent activity
         const activityData = agentsRes.data.data.recent_activity || [];
-        const formattedActivity = activityData.map(activity => {
+        const formattedActivity = activityData.map((activity: any) => {
           const date = new Date(activity.timestamp);
           const now = new Date();
           const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-          
           let timeString;
-          if (diffInMinutes < 1) {
-            timeString = 'Just now';
-          } else if (diffInMinutes < 60) {
-            timeString = `${diffInMinutes} min ago`;
-          } else if (diffInMinutes < 1440) {
-            timeString = `${Math.floor(diffInMinutes / 60)} hours ago`;
-          } else {
-            timeString = `${Math.floor(diffInMinutes / 1440)} days ago`;
-          }
-
-          return {
-            time: timeString,
-            event: activity.activity_type,
-            status: activity.activity_type.toLowerCase().includes('completed') ? 'success' : 
-                   activity.activity_type.toLowerCase().includes('failed') ? 'warning' : 'info'
-          };
+          if (diffInMinutes < 1) timeString = 'Just now';
+          else if (diffInMinutes < 60) timeString = `${diffInMinutes} min ago`;
+          else if (diffInMinutes < 1440) timeString = `${Math.floor(diffInMinutes / 60)} hours ago`;
+          else timeString = `${Math.floor(diffInMinutes / 1440)} days ago`;
+          return { time: timeString, event: activity.activity_type, status: activity.activity_type.toLowerCase().includes('failed') ? 'warning' : 'success' };
         });
-        
         setRecentActivity(formattedActivity);
-
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
-        // Keep mock data if API fails
       }
     };
 
     fetchData();
-    const interval = setInterval(fetchData, 30000); // Refresh every 30 seconds
+    const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [filters.organizationId, filters.agentId]);
 
-  // Keep all the existing JSX exactly the same, just using dashboardData, organizations, agents, and recentActivity
+  const handleClearFilters = () => setFilters({});
+
   return (
     <div className="min-h-screen bg-background relative">
       <LineBackground />
@@ -204,6 +164,37 @@ const Dashboard = () => {
           </div>
         </div>
       </header>
+
+      {/* Filters bar */}
+      <div className="px-3 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:space-x-3 space-y-2 sm:space-y-0">
+        <Button variant="outline" onClick={handleClearFilters}>All Organizations</Button>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-muted-foreground">Organization</span>
+          <Select value={filters.organizationId || ''} onValueChange={(v) => setFilters({ organizationId: v || undefined, agentId: undefined })}>
+            <SelectTrigger className="h-9 w-[220px]">
+              <SelectValue placeholder="Select organization" />
+            </SelectTrigger>
+            <SelectContent>
+              {organizations.map(org => (
+                <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-muted-foreground">Agent</span>
+          <Select value={filters.agentId || ''} onValueChange={(v) => setFilters(prev => ({ ...prev, agentId: v || undefined }))}>
+            <SelectTrigger className="h-9 w-[220px]">
+              <SelectValue placeholder="Select agent" />
+            </SelectTrigger>
+            <SelectContent>
+              {agents.map((agent: any) => (
+                <SelectItem key={agent.agent_id} value={agent.agent_id}>{agent.metadata?.name || agent.agent_id}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="p-3 sm:p-6 relative z-10">
