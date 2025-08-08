@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type SetupStep = "agent-type" | "agent-details" | "llm-provider" | "sdk-setup" | "platform-choice" | "complete";
 
@@ -37,8 +39,12 @@ const AgentSetup = () => {
     agentUseCase: "",
     llmProviders: [] as string[],
     platform: "",
-    apiKey: ""
+    apiKey: "",
+    organizationId: ""
   });
+
+  const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
+  const [orgDialogOpen, setOrgDialogOpen] = useState(false);
 
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('disconnected');
@@ -47,6 +53,23 @@ const AgentSetup = () => {
     if (!setupData.apiKey) {
       generateApiKey();
     }
+    // Fetch organizations for selection
+    const fetchOrgs = async () => {
+      try {
+        const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/organizations`, {
+          headers: { Authorization: `Bearer ${import.meta.env.VITE_API_KEY}` }
+        });
+        const list = (res.data?.data || []).map((o: any) => ({ id: o.id, name: o.name }));
+        setOrganizations(list);
+        if (list.length === 0) {
+          setOrgDialogOpen(true);
+        }
+      } catch (e) {
+        setOrganizations([]);
+        setOrgDialogOpen(true);
+      }
+    };
+    fetchOrgs();
   }, []);
 
   const generateApiKey = () => {
@@ -71,35 +94,19 @@ const AgentSetup = () => {
     }
 
     setConnectionStatus('checking');
-    
     try {
-      // Simulate API call to check connection
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // For demo purposes, randomly succeed or fail
       const isConnected = Math.random() > 0.3;
-      
       if (isConnected) {
         setConnectionStatus('connected');
-        toast({
-          title: "Connection Successful",
-          description: "Your agent is connected and ready to use."
-        });
+        toast({ title: "Connection Successful", description: "Your agent is connected and ready to use." });
       } else {
         setConnectionStatus('disconnected');
-        toast({
-          title: "Connection Failed",
-          description: "Unable to connect to the agent. Please check your configuration.",
-          variant: "destructive"
-        });
+        toast({ title: "Connection Failed", description: "Unable to connect to the agent. Please check your configuration.", variant: "destructive" });
       }
     } catch (error) {
       setConnectionStatus('disconnected');
-      toast({
-        title: "Connection Error",
-        description: "An error occurred while testing the connection.",
-        variant: "destructive"
-      });
+      toast({ title: "Connection Error", description: "An error occurred while testing the connection.", variant: "destructive" });
     }
     setTimeout(() => setApiKeyCopied(false), 2000);
   };
@@ -115,9 +122,21 @@ const AgentSetup = () => {
     };
 
     const nextStep = stepFlow[currentStep];
-    
+
     if (nextStep === "complete" && !setupData.apiKey) {
       generateApiKey();
+    }
+
+    // Require organization before completion
+    if (nextStep === "complete") {
+      if (organizations.length === 0) {
+        setOrgDialogOpen(true);
+        return;
+      }
+      if (!setupData.organizationId) {
+        toast({ title: "Select Organization", description: "Please select an organization to attach this agent to.", variant: "destructive" });
+        return;
+      }
     }
 
     // If we're moving to complete, create the agent in the backend
@@ -131,33 +150,22 @@ const AgentSetup = () => {
             agentDescription: setupData.agentDescription,
             agentType: setupData.agentType,
             agentUseCase: setupData.agentUseCase,
-
             llmProviders: setupData.llmProviders,
             platform: setupData.platform,
             status: "active",
-            sdk_version: "1.0.0"
+            sdk_version: "1.0.0",
+            organizationId: setupData.organizationId
           },
-          {
-            headers: {
-              Authorization: `Bearer ${import.meta.env.VITE_API_KEY}`
-            }
-          }
+          { headers: { Authorization: `Bearer ${import.meta.env.VITE_API_KEY}` } }
         );
 
         if (response.data.success) {
-          toast({
-            title: "Agent Created",
-            description: "Your agent has been created successfully.",
-          });
+          toast({ title: "Agent Created", description: "Your agent has been created successfully." });
           setCurrentStep(nextStep);
         }
       } catch (error: unknown) {
         console.error('Error creating agent:', error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: error instanceof Error ? error.message : "Failed to create agent. Please try again.",
-        });
+        toast({ variant: "destructive", title: "Error", description: error instanceof Error ? error.message : "Failed to create agent. Please try again." });
       } finally {
         setIsLoading(false);
       }
@@ -166,14 +174,7 @@ const AgentSetup = () => {
     }
   };
 
-  const platforms = [
-    "Dialogflow",
-    "Microsoft Bot Framework", 
-    "Amazon Lex",
-    "Rasa",
-    "Botpress",
-    "Voiceflow"
-  ];
+  const platforms = ["Dialogflow", "Microsoft Bot Framework", "Amazon Lex", "Rasa", "Botpress", "Voiceflow"];
 
   const renderStep = () => {
     switch (currentStep) {
@@ -185,9 +186,7 @@ const AgentSetup = () => {
                 <Bot className="h-8 w-8 text-primary" />
               </div>
               <CardTitle className="text-2xl sm:text-3xl">Agent Type</CardTitle>
-              <CardDescription className="text-base sm:text-lg">
-                How is your AI agent built?
-              </CardDescription>
+              <CardDescription className="text-base sm:text-lg">How is your AI agent built?</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-4 sm:gap-6">
@@ -214,11 +213,21 @@ const AgentSetup = () => {
                   </div>
                 </Button>
               </div>
-              <Button 
-                onClick={handleNext} 
-                className="w-full h-12 text-base font-semibold mt-8"
-                disabled={!setupData.agentType}
-              >
+              {/* Organization selection block visible early to encourage selection */}
+              <div className="space-y-3">
+                <Label className="text-base font-medium">Organization</Label>
+                <Select value={setupData.organizationId} onValueChange={(v) => setSetupData(prev => ({ ...prev, organizationId: v }))}>
+                  <SelectTrigger className="h-12 text-base">
+                    <SelectValue placeholder={organizations.length ? "Select organization" : "No organizations found"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {organizations.map(org => (
+                      <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleNext} className="w-full h-12 text-base font-semibold mt-8" disabled={!setupData.agentType}>
                 Continue
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
@@ -231,48 +240,36 @@ const AgentSetup = () => {
           <Card className="w-full max-w-2xl mx-auto animate-fade-in">
             <CardHeader className="text-center pb-6">
               <CardTitle className="text-2xl sm:text-3xl">Agent Details</CardTitle>
-              <CardDescription className="text-base sm:text-lg">
-                Tell us about your AI agent
-              </CardDescription>
+              <CardDescription className="text-base sm:text-lg">Tell us about your AI agent</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <Label htmlFor="agentName" className="text-base font-medium">Agent Name</Label>
-                <Input
-                  id="agentName"
-                  placeholder="My AI Assistant"
-                  value={setupData.agentName}
-                  onChange={(e) => setSetupData(prev => ({ ...prev, agentName: e.target.value }))}
-                  className="h-12 text-base"
-                />
+                <Input id="agentName" placeholder="My AI Assistant" value={setupData.agentName} onChange={(e) => setSetupData(prev => ({ ...prev, agentName: e.target.value }))} className="h-12 text-base" />
               </div>
               <div className="space-y-3">
                 <Label htmlFor="agentDescription" className="text-base font-medium">Description</Label>
-                <Textarea
-                  id="agentDescription"
-                  placeholder="Describe what your agent does and its capabilities..."
-                  value={setupData.agentDescription}
-                  onChange={(e) => setSetupData(prev => ({ ...prev, agentDescription: e.target.value }))}
-                  className="min-h-24 text-base resize-none"
-                  rows={4}
-                />
+                <Textarea id="agentDescription" placeholder="Describe what your agent does and its capabilities..." value={setupData.agentDescription} onChange={(e) => setSetupData(prev => ({ ...prev, agentDescription: e.target.value }))} className="min-h-24 text-base resize-none" rows={4} />
               </div>
               <div className="space-y-3">
                 <Label htmlFor="agentUseCase" className="text-base font-medium">Primary Use Case</Label>
-                <Input
-                  id="agentUseCase"
-                  placeholder="Customer support, sales automation, content generation..."
-                  value={setupData.agentUseCase}
-                  onChange={(e) => setSetupData(prev => ({ ...prev, agentUseCase: e.target.value }))}
-                  className="h-12 text-base"
-                />
+                <Input id="agentUseCase" placeholder="Customer support, sales automation, content generation..." value={setupData.agentUseCase} onChange={(e) => setSetupData(prev => ({ ...prev, agentUseCase: e.target.value }))} className="h-12 text-base" />
               </div>
-
-              <Button 
-                onClick={handleNext} 
-                className="w-full h-12 text-base font-semibold mt-8"
-                disabled={!setupData.agentName || !setupData.agentDescription}
-              >
+              {/* Organization selection also shown here */}
+              <div className="space-y-3">
+                <Label className="text-base font-medium">Organization</Label>
+                <Select value={setupData.organizationId} onValueChange={(v) => setSetupData(prev => ({ ...prev, organizationId: v }))}>
+                  <SelectTrigger className="h-12 text-base">
+                    <SelectValue placeholder={organizations.length ? "Select organization" : "No organizations found"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {organizations.map(org => (
+                      <SelectItem key={org.id} value={org.id}>{org.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleNext} className="w-full h-12 text-base font-semibold mt-8" disabled={!setupData.agentName || !setupData.agentDescription}>
                 Continue
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
@@ -535,6 +532,22 @@ const analytics = new AnalyticsSDK({
       <div className="w-full max-w-5xl">
         {renderStep()}
       </div>
+
+      {/* Dialog prompting to create an organization if none exist */}
+      <Dialog open={orgDialogOpen} onOpenChange={setOrgDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>No organizations found</DialogTitle>
+            <DialogDescription>
+              You need to create an organization before adding an AI agent. Would you like to go to Organization setup now?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOrgDialogOpen(false)}>Close</Button>
+            <Button onClick={() => navigate('/organization-setup')}>Go to Organization Setup</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -21,6 +21,7 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
             agentUseCase,
             llmProviders,
             platform,
+            organizationId,
             status = 'active',
             sdk_version = '1.0.0'
         } = req.body;
@@ -32,6 +33,20 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
                 error: 'agentName and agentType are required'
             });
         }
+        if (!organizationId) {
+            return res.status(400).json({ success: false, error: 'organizationId is required' });
+        }
+
+        // Verify organization belongs to this client
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('id, client_id')
+            .eq('id', organizationId)
+            .eq('client_id', authReq.clientId)
+            .single();
+        if (orgError || !org) {
+            return res.status(404).json({ success: false, error: 'Organization not found for this client' });
+        }
 
         // Generate unique agent ID
         const agentId = crypto.randomUUID();
@@ -40,15 +55,16 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
         const agentData = addTraceContext({
             agent_id: agentId,
             client_id: authReq.clientId,
+            organization_id: organizationId,
             registration_time: new Date().toISOString(),
             status: status,
             sdk_version: sdk_version,
+            name: agentName,
+            description: agentDescription,
+            agent_type: agentType,
+            platform: platform,
             metadata: {
-                name: agentName,
-                description: agentDescription,
-                type: agentType,
                 useCase: agentUseCase,
-                platform: platform,
                 llmProviders: llmProviders,
                 createdViaSetup: true
             }
@@ -58,7 +74,8 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
             agentId,
             name: agentName,
             type: agentType,
-            clientId: authReq.clientId
+            clientId: authReq.clientId,
+            organizationId
         });
 
         // Insert agent into database
@@ -91,69 +108,49 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
             error: error.message,
             clientId: authReq.clientId
         });
-        
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        res.status(500).json({ success: false, error: error.message });
     }
 };
 
-// Get all agents for client
+// Get agents, optionally filter by organization
 const getAgents: RequestHandler = async (req: Request, res: Response) => {
     const authReq = req as AuthenticatedRequest;
     try {
-        logger.info('Fetching agents for client:', { clientId: authReq.clientId });
+        const { organization_id } = req.query as { organization_id?: string };
+        logger.info('Fetching agents for client:', { clientId: authReq.clientId, organization_id });
 
-        const { data: agents, error } = await supabase
+        let query = supabase
             .from('agents')
             .select('*')
             .eq('client_id', authReq.clientId)
             .order('created_at', { ascending: false });
 
+        if (organization_id) {
+            query = query.eq('organization_id', organization_id);
+        }
+
+        const { data: agents, error } = await query;
+
         if (error) {
-            logger.error('Failed to fetch agents:', {
-                error: error.message,
-                clientId: authReq.clientId
-            });
+            logger.error('Failed to fetch agents:', { error: error.message, clientId: authReq.clientId });
             throw error;
         }
 
-        logger.info('Agents fetched successfully:', {
-            count: agents?.length || 0,
-            clientId: authReq.clientId
-        });
-
-        res.json({
-            success: true,
-            data: agents || []
-        });
+        res.json({ success: true, data: agents || [] });
 
     } catch (error: any) {
-        logger.error('Error fetching agents:', {
-            error: error.message,
-            clientId: authReq.clientId
-        });
-        
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        logger.error('Error fetching agents:', { error: error.message, clientId: authReq.clientId });
+        res.status(500).json({ success: false, error: error.message });
     }
 };
 
-// Delete agent
+// Delete agent (scoped to client)
 const deleteAgent: RequestHandler = async (req: Request, res: Response) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const { id } = req.params;
-        
-        logger.info('Deleting agent:', {
-            agentId: id,
-            clientId: authReq.clientId
-        });
+        logger.info('Deleting agent:', { agentId: id, clientId: authReq.clientId });
 
-        // Delete agent (cascading will handle related records)
         const { error } = await supabase
             .from('agents')
             .delete()
@@ -161,35 +158,15 @@ const deleteAgent: RequestHandler = async (req: Request, res: Response) => {
             .eq('client_id', authReq.clientId);
 
         if (error) {
-            logger.error('Failed to delete agent:', {
-                error: error.message,
-                agentId: id,
-                clientId: authReq.clientId
-            });
+            logger.error('Failed to delete agent:', { error: error.message, agentId: id, clientId: authReq.clientId });
             throw error;
         }
 
-        logger.info('Agent deleted successfully:', {
-            agentId: id,
-            clientId: authReq.clientId
-        });
-
-        res.json({
-            success: true,
-            message: 'Agent deleted successfully'
-        });
+        res.json({ success: true, message: 'Agent deleted successfully' });
 
     } catch (error: any) {
-        logger.error('Error deleting agent:', {
-            error: error.message,
-            agentId: req.params.id,
-            clientId: authReq.clientId
-        });
-        
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        logger.error('Error deleting agent:', { error: error.message, agentId: req.params.id, clientId: authReq.clientId });
+        res.status(500).json({ success: false, error: error.message });
     }
 };
 

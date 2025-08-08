@@ -17,64 +17,46 @@ const organizationSchema = z.object({
   email: z.string().email(),
 });
 
-type OrganizationBody = z.infer<typeof organizationSchema>;
-
 // Create organization
 const createOrganization: RequestHandler = async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
-    const { orgName, orgType, orgDescription, email } = req.body as OrganizationBody;
+    const { orgName, orgType, orgDescription, email } = organizationSchema.parse(req.body);
 
     const { data, error } = await supabase
       .from('organizations')
       .insert(addTraceContext({
         name: orgName,
-        plan: orgType === 'enterprise' ? 'Enterprise' : 
-              orgType === 'startup' ? 'Basic' : 'Professional',
+        plan: orgType,
         client_id: authReq.clientId,
-        metadata: {
-          description: orgDescription,
-          email: email,
-          type: orgType
-        }
+        description: orgDescription
       }, authReq))
       .select()
       .single();
 
     if (error) throw error;
 
-    res.status(201).json({
-      success: true,
-      data
-    });
+    res.status(201).json({ success: true, data });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
-// Get organizations for client
+// Get organizations for client (simple list)
 const getOrganizations: RequestHandler = async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { data: organizations, error } = await supabase
-      .from('view_organization_metrics')
-      .select('*')
-      .eq('client_id', authReq.clientId);
+      .from('organizations')
+      .select('id, name, plan, description, created_at')
+      .eq('client_id', authReq.clientId)
+      .order('created_at', { ascending: true });
 
     if (error) throw error;
 
-    res.json({
-      success: true,
-      data: organizations
-    });
+    res.json({ success: true, data: organizations });
   } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 
