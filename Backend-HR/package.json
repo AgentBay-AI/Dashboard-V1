@@ -10,7 +10,8 @@
     "test": "jest",
     "lint": "eslint src/**/*.ts",
     "docker:build": "docker build -t hr-agent-backend .",
-    "docker:run": "docker run -p 8080:8080 hr-agent-backend"
+    "docker:run": "docker run -p 8080:8080 hr-agent-backend",
+    "seed": "ts-node-dev --transpile-only src/scripts/seed-demo.ts"
   },
   "keywords": [
     "ai",

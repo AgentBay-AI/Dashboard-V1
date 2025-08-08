@@ -1,6 +1,59 @@
 -- Enable UUID generation (Supabase: pgcrypto)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Add missing columns if needed
+ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS provider VARCHAR(50);
+ALTER TABLE IF EXISTS agents ADD COLUMN IF NOT EXISTS model VARCHAR(100);
+
+-- Ensure lookup table exists
+CREATE TABLE IF NOT EXISTS llm_models (
+  model VARCHAR(100) PRIMARY KEY,
+  provider VARCHAR(50) NOT NULL
+);
+
+-- Upsert OpenAI models (lowercase keys)
+INSERT INTO llm_models (model, provider) VALUES
+  ('gpt-5', 'openai'),
+  ('gpt-5-mini', 'openai'),
+  ('gpt-4.1', 'openai'),
+  ('gpt-4.1-mini', 'openai'),
+  ('gpt-4.1-nano', 'openai'),
+  ('gpt-4o', 'openai'),
+  ('gpt-4o-mini', 'openai'),
+  ('o3', 'openai'),
+  ('o4-mini', 'openai'),
+  ('gpt-4o-mini-2024-07-18', 'openai'),
+  ('gpt-4-turbo', 'openai'),
+  ('gpt-4', 'openai'),
+  ('gpt-3.5-turbo', 'openai'),
+  ('gpt-3.5-turbo-0125', 'openai'),
+  ('text-embedding-3-small', 'openai'),
+  ('text-embedding-3-large', 'openai')
+ON CONFLICT (model) DO NOTHING;
+
+-- Upsert Anthropic models
+INSERT INTO llm_models (model, provider) VALUES
+  ('claude-4-opus', 'anthropic'),
+  ('claude-4.1-opus', 'anthropic'),
+  ('claude-4-sonnet', 'anthropic'),
+  ('claude-3.7-sonnet', 'anthropic'),
+  ('claude-3.5-sonnet', 'anthropic'),
+  ('claude-3-opus', 'anthropic'),
+  ('claude-3-sonnet', 'anthropic'),
+  ('claude-3-haiku', 'anthropic'),
+  ('claude-2.1', 'anthropic'),
+  ('claude-2.0', 'anthropic')
+ON CONFLICT (model) DO NOTHING;
+
+-- Upsert Google models
+INSERT INTO llm_models (model, provider) VALUES
+  ('gemini-2.5-pro', 'google'),
+  ('gemini-1.5-pro', 'google'),
+  ('gemini-1.5-flash', 'google'),
+  ('gemini-pro', 'google'),
+  ('gemini-pro-vision', 'google')
+ON CONFLICT (model) DO NOTHING;
+
 -- Drop domain tables and views but keep api_keys
 DROP VIEW IF EXISTS view_organization_overview CASCADE;
 DROP VIEW IF EXISTS view_success_rate CASCADE;
