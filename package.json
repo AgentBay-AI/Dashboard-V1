@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "build": "next build",
-    "dev": "next dev",
-    "lint": "next lint",
-    "start": "next start"
+    "dev": "npm run dev --prefix Frontend-UI",
+    "dev:frontend": "npm run dev --prefix Frontend-UI",
+    "dev:backend": "npm run dev --prefix Backend-HR",
+    "build": "npm run build --prefix Frontend-UI",
+    "start": "npm run preview --prefix Frontend-UI",
+    "lint": "echo 'No root lint; run per package'"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

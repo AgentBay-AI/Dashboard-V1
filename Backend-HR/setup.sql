@@ -230,6 +230,10 @@ CREATE TABLE IF NOT EXISTS agent_activity (
 ALTER TABLE IF EXISTS public.profiles
   ADD COLUMN IF NOT EXISTS client_id varchar(255);
 
+-- Clerk integration columns
+ALTER TABLE IF EXISTS public.profiles
+  ADD COLUMN IF NOT EXISTS clerk_user_id varchar(255);
+
 -- Backfill any missing client_id values
 DO $$
 BEGIN
@@ -243,6 +247,7 @@ END $$;
 -- Helpful indexes
 CREATE INDEX IF NOT EXISTS idx_profiles_client_id ON public.profiles(client_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_clerk_user_id ON public.profiles(clerk_user_id);
 
 -- Updated-at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
