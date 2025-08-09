@@ -22,6 +22,12 @@ const googleAuthSchema = z.object({
   code: z.string().optional()
 });
 
+const clerkSyncSchema = z.object({
+  clerk_user_id: z.string(),
+  email: z.string().email(),
+  full_name: z.string().optional()
+});
+
 // Helper function to generate JWT
 function generateToken(userId: string, email: string, clientId?: string): string {
   return jwt.sign(
@@ -75,6 +81,78 @@ async function findOrCreateUser(email: string, name: string, organizationId?: st
     throw error;
   }
 }
+
+// POST /api/auth/clerk/sync - called from frontend after Clerk sign-in
+router.post('/clerk/sync', async (req, res) => {
+  try {
+    const { clerk_user_id, email, full_name } = clerkSyncSchema.parse(req.body);
+
+    // Try existing by clerk_user_id first
+    let { data: user } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('clerk_user_id', clerk_user_id)
+      .maybeSingle();
+
+    if (!user) {
+      // Fallback by email
+      const { data: byEmail } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (byEmail) {
+        // Attach clerk id and ensure client_id exists
+        const clientId = byEmail.client_id || `client_${crypto.randomBytes(8).toString('hex')}`;
+        const { data: updated } = await supabase
+          .from('profiles')
+          .update({ clerk_user_id, client_id: clientId, full_name: full_name || byEmail.full_name })
+          .eq('id', byEmail.id)
+          .select('*')
+          .single();
+        user = updated!;
+      } else {
+        // Create new profile with fresh client_id
+        const clientId = `client_${crypto.randomBytes(8).toString('hex')}`;
+        const { data: created } = await supabase
+          .from('profiles')
+          .insert({ email, full_name: full_name || email.split('@')[0], role: 'user', client_id: clientId, clerk_user_id })
+          .select('*')
+          .single();
+        user = created!;
+      }
+    }
+
+    // Optionally mint a dashboard API key on first sync if none exists for this client_id
+    const { data: existingKey } = await supabase
+      .from('api_keys')
+      .select('id')
+      .eq('client_id', user.client_id)
+      .limit(1)
+      .maybeSingle();
+
+    let dashboardKey: string | undefined;
+    if (!existingKey) {
+      const rawKey = `sk-${crypto.randomBytes(32).toString('hex')}`;
+      const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
+      await supabase.from('api_keys').insert({
+        key_hash: keyHash,
+        client_id: user.client_id,
+        client_name: `${user.full_name || 'User'} Dashboard`,
+        permissions: JSON.stringify(["read","write","sdk"]),
+        rate_limit_per_minute: 3000,
+        is_active: true
+      });
+      dashboardKey = rawKey; // Only returned once
+    }
+
+    res.json({ success: true, data: { client_id: user.client_id, user_id: user.id, email: user.email, dashboard_key: dashboardKey } });
+  } catch (error: any) {
+    logger.error('Clerk sync failed:', error);
+    res.status(400).json({ success: false, error: error.message });
+  }
+});
 
 // POST /api/auth/login - Email/password login
 router.post('/login', async (req, res) => {
