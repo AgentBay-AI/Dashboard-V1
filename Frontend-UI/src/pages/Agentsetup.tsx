@@ -40,6 +40,8 @@ const AgentSetup = () => {
     llmProviders: [] as string[],
     platform: "",
     apiKey: "",
+    apiKeyName: "",
+    apiKeyClientId: "",
     organizationId: ""
   });
 
@@ -50,9 +52,6 @@ const AgentSetup = () => {
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('disconnected');
 
   useEffect(() => {
-    if (!setupData.apiKey) {
-      generateApiKey();
-    }
     // Fetch organizations for selection
     const fetchOrgs = async () => {
       try {
@@ -72,12 +71,33 @@ const AgentSetup = () => {
     fetchOrgs();
   }, []);
 
-  const generateApiKey = () => {
-    const key = `sk-${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
-    setSetupData(prev => ({ ...prev, apiKey: key }));
+  // Request backend to generate an API key we can give to SDKs/agents
+  const requestApiKey = async () => {
+    try {
+      const name = setupData.apiKeyName || setupData.agentName || `Agent ${new Date().toISOString()}`;
+      const body = {
+        client_name: name,
+        permissions: ["read", "write", "sdk"],
+        rate_limit_per_minute: 3000
+      };
+      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/keys`, body, {
+        headers: { Authorization: `Bearer ${import.meta.env.VITE_API_KEY}` }
+      });
+      if (res.data?.success) {
+        const { api_key, client_id, client_name } = res.data.data || {};
+        setSetupData(prev => ({ ...prev, apiKey: api_key, apiKeyClientId: client_id, apiKeyName: client_name }));
+        toast({ title: "API key generated", description: `Client ${client_name} (${client_id})` });
+      } else {
+        throw new Error(res.data?.error || 'Failed to generate API key');
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || err.message || 'Failed to generate API key';
+      toast({ variant: 'destructive', title: 'Key generation failed', description: msg });
+    }
   };
 
   const copyApiKey = () => {
+    if (!setupData.apiKey) return;
     navigator.clipboard.writeText(setupData.apiKey);
     setApiKeyCopied(true);
     setTimeout(() => setApiKeyCopied(false), 2000);
@@ -85,30 +105,26 @@ const AgentSetup = () => {
 
   const checkConnection = async () => {
     if (!setupData.apiKey) {
-      toast({
-        title: "No API Key",
-        description: "Please generate an API key first.",
-        variant: "destructive"
-      });
+      toast({ title: "No API Key", description: "Generate an API key first.", variant: "destructive" });
       return;
     }
-
     setConnectionStatus('checking');
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      const isConnected = Math.random() > 0.3;
-      if (isConnected) {
+      const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/sdk/status`, {
+        headers: { Authorization: `Bearer ${setupData.apiKey}` }
+      });
+      if (res.data?.success) {
         setConnectionStatus('connected');
-        toast({ title: "Connection Successful", description: "Your agent is connected and ready to use." });
+        toast({ title: "Connection Successful", description: `Client ${res.data.data?.client_id}` });
       } else {
         setConnectionStatus('disconnected');
-        toast({ title: "Connection Failed", description: "Unable to connect to the agent. Please check your configuration.", variant: "destructive" });
+        toast({ variant: 'destructive', title: 'Connection Failed', description: res.data?.error || 'Unauthorized' });
       }
-    } catch (error) {
+    } catch (error: any) {
       setConnectionStatus('disconnected');
-      toast({ title: "Connection Error", description: "An error occurred while testing the connection.", variant: "destructive" });
+      const msg = error?.response?.data?.message || error?.response?.data?.error || error.message;
+      toast({ variant: 'destructive', title: 'Connection Error', description: msg });
     }
-    setTimeout(() => setApiKeyCopied(false), 2000);
   };
 
   const handleNext = async () => {
@@ -124,7 +140,7 @@ const AgentSetup = () => {
     const nextStep = stepFlow[currentStep];
 
     if (nextStep === "complete" && !setupData.apiKey) {
-      generateApiKey();
+      await requestApiKey();
     }
 
     // Require organization before completion
@@ -170,6 +186,10 @@ const AgentSetup = () => {
         setIsLoading(false);
       }
     } else {
+      // If moving to sdk-setup and key missing, pre-generate
+      if (nextStep === 'sdk-setup' && !setupData.apiKey) {
+        await requestApiKey();
+      }
       setCurrentStep(nextStep);
     }
   };
@@ -356,9 +376,13 @@ const AgentSetup = () => {
                   </Button>
                 ))}
               </div>
+              <div className="space-y-2">
+                <Label className="text-base font-medium">Key display name</Label>
+                <Input placeholder="e.g. Production Agent Key" value={setupData.apiKeyName} onChange={(e) => setSetupData(prev => ({ ...prev, apiKeyName: e.target.value }))} className="h-12 text-base" />
+              </div>
               <Button 
-                onClick={handleNext}
-                className="w-full h-12 text-base font-semibold mt-8"
+                onClick={async () => { await requestApiKey(); setCurrentStep('sdk-setup'); }}
+                className="w-full h-12 text-base font-semibold mt-4"
                 disabled={!setupData.platform}
               >
                 Generate API Key
@@ -397,7 +421,7 @@ const AgentSetup = () => {
                        {`import { AnalyticsSDK } from '@analytics-dashboard/sdk';
 
 const analytics = new AnalyticsSDK({
-  apiKey: 'YOUR_API_KEY',
+  apiKey: '${setupData.apiKey}',
   providers: [${setupData.llmProviders.map(p => `'${p}'`).join(', ')}]
 });`}
                     </div>
@@ -412,23 +436,36 @@ const analytics = new AnalyticsSDK({
                       <AlertTriangle className="h-4 w-4" />
                       <AlertDescription className="text-sm">
                         <strong>Important:</strong> Store this in your .env file as BACKEND_API_KEY. 
-                        This key will not be available after 1 hour for security reasons.
+                        You can always generate/rotate from this page later.
                       </AlertDescription>
                     </Alert>
-                    <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
-                      <Input 
-                        value={setupData.apiKey} 
-                        readOnly 
-                        className="font-mono text-sm flex-1"
-                      />
-                      <Button
-                        variant="outline"
-                        onClick={copyApiKey}
-                        className="sm:w-auto"
-                      >
-                        {apiKeyCopied ? <CheckCircle className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                        {apiKeyCopied ? "Copied!" : "Copy"}
-                      </Button>
+                    <div className="grid gap-3">
+                      <div className="space-y-2">
+                        <Label className="text-base font-medium">Key display name</Label>
+                        <Input value={setupData.apiKeyName} onChange={(e) => setSetupData(prev => ({ ...prev, apiKeyName: e.target.value }))} className="h-10 text-sm" placeholder="e.g. Production Agent Key" />
+                      </div>
+                      <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-3">
+                        <Input 
+                          value={setupData.apiKey} 
+                          readOnly 
+                          className="font-mono text-sm flex-1"
+                        />
+                        <Button
+                          variant="outline"
+                          onClick={copyApiKey}
+                          className="sm:w-auto"
+                        >
+                          {apiKeyCopied ? <CheckCircle className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                          {apiKeyCopied ? "Copied!" : "Copy"}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={requestApiKey}
+                          className="sm:w-auto"
+                        >
+                          Regenerate
+                        </Button>
+                      </div>
                     </div>
                     
                     {/* Connection Status */}
@@ -457,7 +494,7 @@ const analytics = new AnalyticsSDK({
                           variant="outline"
                           size="sm"
                           onClick={checkConnection}
-                          disabled={connectionStatus === 'checking'}
+                          disabled={connectionStatus === 'checking' || !setupData.apiKey}
                         >
                           {connectionStatus === 'checking' ? 'Checking...' : 'Test Connection'}
                         </Button>
