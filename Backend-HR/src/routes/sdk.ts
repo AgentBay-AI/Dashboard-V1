@@ -127,6 +127,9 @@ const postLlmUsage: RequestHandler = async (req: Request, res: Response) => {
     const model = body.model?.toLowerCase();
     if (!provider && model) provider = await resolveProviderIfMissing(model);
 
+    // Normalize provider aliases
+    if (provider === 'gemini') provider = 'google';
+
     let cost = body.cost;
     if ((!cost || cost === 0) && provider && model) {
       cost = calculateTokenCost(provider, model, body.tokens_input, body.tokens_output);
