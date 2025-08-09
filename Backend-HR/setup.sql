@@ -226,6 +226,24 @@ CREATE TABLE IF NOT EXISTS agent_activity (
     timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Ensure profiles has client_id for tenant mapping
+ALTER TABLE IF EXISTS public.profiles
+  ADD COLUMN IF NOT EXISTS client_id varchar(255);
+
+-- Backfill any missing client_id values
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='profiles' AND column_name='client_id') THEN
+    UPDATE public.profiles
+    SET client_id = 'client_' || encode(gen_random_bytes(8),'hex')
+    WHERE client_id IS NULL;
+  END IF;
+END $$;
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_profiles_client_id ON public.profiles(client_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_email ON public.profiles(email);
+
 -- Updated-at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
