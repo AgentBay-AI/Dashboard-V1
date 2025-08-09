@@ -16,6 +16,7 @@ import setupOrgsRouter from './routes/setup-organizations';
 import { addTraceContext } from './middleware/tracing';
 import { analyticsApiRoutes } from './routes/analytics-api';
 import sdkRouter from './routes/sdk';
+import { authRoutes } from './routes/auth';
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -35,6 +36,7 @@ app.use((req, res, next) => {
 });
 
 // Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/agents', agentsRouter);
 app.use('/api/agents', agentRoutes);
 app.use('/api/keys', apiKeyRoutes);
