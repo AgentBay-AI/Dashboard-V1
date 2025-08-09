@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { calculateTokenCost } from '../config/llm-pricing';
+import crypto from 'crypto';
 
 const router = Router();
 router.use(authenticateApiKey);
@@ -95,6 +96,24 @@ async function assertAgentOwnedByClient(clientId: string, agentId: string): Prom
     .single();
   return !!data;
 }
+
+// Lightweight ping/status for SDK and UI connection tests
+const getStatus: RequestHandler = async (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  try {
+    res.json({
+      success: true,
+      data: {
+        client_id: authReq.clientId,
+        permissions: authReq.permissions,
+        timestamp: new Date().toISOString(),
+      }
+    });
+  } catch (err: any) {
+    logger.error('SDK status error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
 
 // POST /api/sdk/llm-usage
 const postLlmUsage: RequestHandler = async (req: Request, res: Response) => {
@@ -282,6 +301,7 @@ const postMessage: RequestHandler = async (req: Request, res: Response) => {
   }
 };
 
+router.get('/status', requirePermission('read'), getStatus);
 router.post('/llm-usage', requirePermission('write'), postLlmUsage);
 router.post('/metrics', requirePermission('write'), postMetrics);
 router.post('/health', requirePermission('write'), postHealth);
