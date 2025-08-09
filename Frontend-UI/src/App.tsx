@@ -10,6 +10,7 @@ import Setup from "@/pages/Setup.tsx";
 import AgentSetup from "@/pages/Agentsetup.tsx";
 import OrganizationSetup from "@/pages/Organisationsetup.tsx";
 import NotFound from "@/pages/NotFound.tsx";
+import { SignedIn, SignedOut, SignIn } from "@clerk/clerk-react";
 
 const queryClient = new QueryClient();
 
@@ -22,7 +23,21 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
-            <Route path="/dashboard" element={<NewDashboard />} />
+            <Route
+              path="/dashboard"
+              element={
+                <div>
+                  <SignedOut>
+                    <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}>
+                      <SignIn redirectUrl="/dashboard" />
+                    </div>
+                  </SignedOut>
+                  <SignedIn>
+                    <NewDashboard />
+                  </SignedIn>
+                </div>
+              }
+            />
             <Route path="/setup" element={<Setup />} />
             <Route path="/agent-setup" element={<AgentSetup />} />
             <Route path="/organization-setup" element={<OrganizationSetup />} />
