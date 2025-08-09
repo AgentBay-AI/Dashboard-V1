@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase';
 import { logger } from '../utils/logger';
+import crypto from 'crypto';
 
 const router = express.Router();
 
@@ -22,9 +23,9 @@ const googleAuthSchema = z.object({
 });
 
 // Helper function to generate JWT
-function generateToken(userId: string, email: string): string {
+function generateToken(userId: string, email: string, clientId?: string): string {
   return jwt.sign(
-    { userId, email, iat: Date.now() },
+    { userId, email, clientId, iat: Date.now() },
     JWT_SECRET,
     { expiresIn: '7d' }
   );
@@ -34,24 +35,32 @@ function generateToken(userId: string, email: string): string {
 async function findOrCreateUser(email: string, name: string, organizationId?: string) {
   try {
     // Check if user exists
-    const { data: existingUser, error: fetchError } = await supabase
+    const { data: existingUser } = await supabase
       .from('profiles')
       .select('*')
       .eq('email', email)
-      .single();
+      .maybeSingle();
 
-    if (existingUser && !fetchError) {
+    if (existingUser) {
+      // Ensure client_id exists
+      if (!existingUser.client_id) {
+        const clientId = `client_${crypto.randomBytes(8).toString('hex')}`;
+        await supabase.from('profiles').update({ client_id: clientId }).eq('id', existingUser.id);
+        return { ...existingUser, client_id: clientId };
+      }
       return existingUser;
     }
 
-    // Create new user
+    // Create new user with a fresh client_id
+    const clientId = `client_${crypto.randomBytes(8).toString('hex')}`;
     const { data: newUser, error: createError } = await supabase
       .from('profiles')
       .insert({
         email,
         full_name: name,
         organization_id: organizationId || null,
-        role: 'user'
+        role: 'user',
+        client_id: clientId
       })
       .select()
       .single();
@@ -72,12 +81,10 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
 
-    // For demo purposes, accept any email/password combination
-    // In production, you'd verify against hashed passwords in database
-    
+    // Demo: accept any email/password
     const user = await findOrCreateUser(email, email.split('@')[0] || 'User');
 
-    const token = generateToken(user.id, user.email);
+    const token = generateToken(user.id, user.email, user.client_id);
 
     res.json({
       success: true,
@@ -85,7 +92,8 @@ router.post('/login', async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.full_name,
-        organization_id: user.organization_id
+        organization_id: user.organization_id,
+        client_id: user.client_id
       },
       token
     });
@@ -102,15 +110,13 @@ router.post('/google', async (req, res) => {
   try {
     const { token, code } = googleAuthSchema.parse(req.body);
 
-    // For now, simulate Google auth success
-    // In production, you'd verify the Google token/code with Google's API
-    
+    // Simulate Google auth success
     const demoEmail = 'user@gmail.com';
     const demoName = 'Google User';
     
     const user = await findOrCreateUser(demoEmail, demoName);
 
-    const authToken = generateToken(user.id, user.email);
+    const authToken = generateToken(user.id, user.email, user.client_id);
 
     res.json({
       success: true,
@@ -118,7 +124,8 @@ router.post('/google', async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.full_name,
-        organization_id: user.organization_id
+        organization_id: user.organization_id,
+        client_id: user.client_id
       },
       token: authToken
     });
@@ -133,8 +140,6 @@ router.post('/google', async (req, res) => {
 // POST /api/auth/logout - Logout
 router.post('/logout', async (req, res) => {
   try {
-    // In a real app, you might want to blacklist the JWT token
-    // For now, we just acknowledge the logout
     res.json({ success: true, message: 'Logged out successfully' });
     logger.info('User logged out');
   } catch (error) {
@@ -169,7 +174,8 @@ router.get('/me', async (req, res) => {
         id: user.id,
         email: user.email,
         name: user.full_name,
-        organization_id: user.organization_id
+        organization_id: user.organization_id,
+        client_id: user.client_id
       }
     });
   } catch (error) {
