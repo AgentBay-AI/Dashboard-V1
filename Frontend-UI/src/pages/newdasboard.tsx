@@ -51,11 +51,32 @@ const Dashboard = () => {
     system: { cpu: Math.floor(Math.random() * 30) + 50, memory: Math.floor(Math.random() * 30) + 60, uptime: 99.9 }
   });
 
-  const apiKey = import.meta.env.VITE_API_KEY;
-  const baseURL = import.meta.env.VITE_BACKEND_URL;
+  const [ready, setReady] = useState(false);
+
+  // Wait for client sync (api key + backend url) before any calls
+  useEffect(() => {
+    let cancelled = false;
+    function checkReady() {
+      try {
+        const key = localStorage.getItem('dashboard_api_key');
+        const base = localStorage.getItem('backend_url');
+        if (key && base) {
+          if (!cancelled) setReady(true);
+          return;
+        }
+      } catch {}
+      setTimeout(checkReady, 250);
+    }
+    checkReady();
+    return () => { cancelled = true; };
+  }, []);
+
+  const apiKey = (() => { try { return localStorage.getItem('dashboard_api_key') || '' } catch { return '' }})();
+  const baseURL = (() => { try { return localStorage.getItem('backend_url') || (import.meta.env.VITE_BACKEND_URL as string) } catch { return import.meta.env.VITE_BACKEND_URL as string } })();
   const headers = { Authorization: `Bearer ${apiKey}` };
 
   useEffect(() => {
+    if (!ready) return;
     const fetchFilters = async () => {
       try {
         const orgRes = await axios.get(`${baseURL}/organizations`, { headers });
@@ -64,26 +85,27 @@ const Dashboard = () => {
       } catch {}
     };
     fetchFilters();
-  }, []);
+  }, [ready]);
 
   useEffect(() => {
+    if (!ready) return;
     const fetchData = async () => {
       try {
         const params: any = {};
         if (filters.organizationId) params.organization_id = filters.organizationId;
         if (filters.agentId) params.agent_id = filters.agentId;
 
-        const [agentsRes, metricsRes, llmUsageRes] = await Promise.all([
+        const [overviewRes, plainAgentsRes, metricsRes, llmUsageRes] = await Promise.all([
           axios.get(`${baseURL}/agents/operations/overview`, { headers, params }),
+          axios.get(`${baseURL}/agents`, { headers, params }),
           axios.get(`${baseURL}/metrics/overview`, { headers }),
           axios.get(`${baseURL}/llm-usage/aggregated`, { headers, params: { ...params, timeframe: '24h' } })
         ]);
 
-        // Load agents for Agent selector
-        const activeAgents = agentsRes.data.data.active_agents || [];
-        setAgents(activeAgents);
+        const plainAgents = (plainAgentsRes.data?.data || []);
+        setAgents(Array.isArray(plainAgents) ? plainAgents : []);
 
-        // Organizations list already loaded; optional: load org-scoped if needed
+        const activeAgentsForStats = overviewRes.data?.data?.active_agents || plainAgents;
 
         const successRateMetric = Array.isArray(metricsRes.data) ? 
           metricsRes.data.find((m: any) => m.success_rate_percent !== undefined) : null;
@@ -92,8 +114,8 @@ const Dashboard = () => {
 
         setDashboardData({
           agents: {
-            active: activeAgents.length,
-            total: activeAgents.length,
+            active: Array.isArray(activeAgentsForStats) ? activeAgentsForStats.length : 0,
+            total: Array.isArray(activeAgentsForStats) ? activeAgentsForStats.length : 0,
             successRate: successRateMetric ? parseFloat(successRateMetric.success_rate_percent) || 0 : 100,
             avgResponseTime: responseTimeMetric ? parseFloat(responseTimeMetric.avg_response_time_ms) / 1000 || 1.2 : 1.2
           },
@@ -101,13 +123,12 @@ const Dashboard = () => {
           costs: {
             totalTokens: (llmUsageRes.data.summary?.total_input_tokens || 0) + (llmUsageRes.data.summary?.total_output_tokens || 0),
             monthlyCost: llmUsageRes.data.summary?.total_cost || 0,
-            costPerAgent: activeAgents.length > 0 ? (llmUsageRes.data.summary?.total_cost || 0) / activeAgents.length : 0
+            costPerAgent: (Array.isArray(activeAgentsForStats) && activeAgentsForStats.length > 0) ? (llmUsageRes.data.summary?.total_cost || 0) / activeAgentsForStats.length : 0
           },
           system: { cpu: Math.floor(Math.random() * 30) + 50, memory: Math.floor(Math.random() * 30) + 60, uptime: 99.9 }
         });
 
-        // Format recent activity
-        const activityData = agentsRes.data.data.recent_activity || [];
+        const activityData = overviewRes.data?.data?.recent_activity || [];
         const formattedActivity = activityData.map((activity: any) => {
           const date = new Date(activity.timestamp);
           const now = new Date();
@@ -122,13 +143,14 @@ const Dashboard = () => {
         setRecentActivity(formattedActivity);
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
+        setAgents([]);
       }
     };
 
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
-  }, [filters.organizationId, filters.agentId]);
+  }, [filters.organizationId, filters.agentId, ready]);
 
   const handleClearFilters = () => setFilters({});
 
@@ -137,6 +159,14 @@ const Dashboard = () => {
     const org = organizations.find((o: any) => o.id === organizationId);
     return org?.name || 'N/A';
   };
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Preparing your dashboard...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background relative">
