@@ -42,7 +42,8 @@ const AgentSetup = () => {
     apiKey: "",
     apiKeyName: "",
     apiKeyClientId: "",
-    organizationId: ""
+    organizationId: "",
+    agentId: ""
   });
 
   const [organizations, setOrganizations] = useState<Array<{ id: string; name: string }>>([]);
@@ -51,14 +52,38 @@ const AgentSetup = () => {
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('disconnected');
 
+  const [ready, setReady] = useState(false);
+  const baseURL = (() => { try { return localStorage.getItem('backend_url') || (import.meta.env.VITE_BACKEND_URL as string) } catch { return import.meta.env.VITE_BACKEND_URL as string } })();
+  const authKey = (() => { try { return localStorage.getItem('dashboard_api_key') || '' } catch { return '' } })();
+  const authHeaders = { Authorization: `Bearer ${authKey}` };
+  const clientId = (() => { try { return localStorage.getItem('client_id') || '' } catch { return '' } })();
+
   useEffect(() => {
+    let cancelled = false;
+    function check() {
+      try {
+        const b = localStorage.getItem('backend_url') || (import.meta.env.VITE_BACKEND_URL as string);
+        const k = localStorage.getItem('dashboard_api_key');
+        if (b && k) {
+          if (!cancelled) setReady(true);
+          return;
+        }
+      } catch {}
+      setTimeout(check, 250);
+    }
+    check();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!ready) return;
     // Fetch organizations for selection
     const fetchOrgs = async () => {
       try {
-        const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/organizations`, {
-          headers: { Authorization: `Bearer ${import.meta.env.VITE_API_KEY}` }
-        });
-        const list = (res.data?.data || []).map((o: any) => ({ id: o.id, name: o.name }));
+        const res = await axios.get(`${baseURL}/organizations`, { headers: authHeaders });
+        const raw = (res.data?.data || []) as any[];
+        const scoped = clientId ? raw.filter((o: any) => o.client_id === clientId) : raw;
+        const list = scoped.map((o: any) => ({ id: o.id, name: o.name }));
         setOrganizations(list);
         if (list.length === 0) {
           setOrgDialogOpen(true);
@@ -69,7 +94,7 @@ const AgentSetup = () => {
       }
     };
     fetchOrgs();
-  }, []);
+  }, [ready, clientId]);
 
   // Request backend to generate an API key we can give to SDKs/agents
   const requestApiKey = async () => {
@@ -80,9 +105,7 @@ const AgentSetup = () => {
         permissions: ["read", "write", "sdk"],
         rate_limit_per_minute: 3000
       };
-      const res = await axios.post(`${import.meta.env.VITE_BACKEND_URL}/keys`, body, {
-        headers: { Authorization: `Bearer ${import.meta.env.VITE_API_KEY}` }
-      });
+      const res = await axios.post(`${baseURL}/keys`, body, { headers: authHeaders });
       if (res.data?.success) {
         const { api_key, client_id, client_name } = res.data.data || {};
         setSetupData(prev => ({ ...prev, apiKey: api_key, apiKeyClientId: client_id, apiKeyName: client_name }));
@@ -110,20 +133,20 @@ const AgentSetup = () => {
     }
     setConnectionStatus('checking');
     try {
-      const res = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/sdk/status`, {
-        headers: { Authorization: `Bearer ${setupData.apiKey}` }
-      });
-      if (res.data?.success) {
+      const sdkHeaders = { Authorization: `Bearer ${setupData.apiKey}` };
+      const statusRes = await axios.get(`${baseURL}/sdk/status`, { headers: sdkHeaders });
+      if (statusRes.data?.success) {
         setConnectionStatus('connected');
-        toast({ title: "Connection Successful", description: `Client ${res.data.data?.client_id}` });
+        const cid = statusRes.data?.data?.client_id;
+        toast({ title: "SDK Connected", description: `Client ${cid}` });
       } else {
         setConnectionStatus('disconnected');
-        toast({ variant: 'destructive', title: 'Connection Failed', description: res.data?.error || 'Unauthorized' });
+        toast({ variant: 'destructive', title: 'SDK Connection Failed', description: statusRes.data?.error || 'Unauthorized' });
       }
     } catch (error: any) {
       setConnectionStatus('disconnected');
       const msg = error?.response?.data?.message || error?.response?.data?.error || error.message;
-      toast({ variant: 'destructive', title: 'Connection Error', description: msg });
+      toast({ variant: 'destructive', title: 'SDK Connection Error', description: msg });
     }
   };
 
@@ -160,7 +183,7 @@ const AgentSetup = () => {
       setIsLoading(true);
       try {
         const response = await axios.post(
-          `${import.meta.env.VITE_BACKEND_URL}/agents`,
+          `${baseURL}/agents`,
           {
             agentName: setupData.agentName,
             agentDescription: setupData.agentDescription,
@@ -172,16 +195,18 @@ const AgentSetup = () => {
             sdk_version: "1.0.0",
             organizationId: setupData.organizationId
           },
-          { headers: { Authorization: `Bearer ${import.meta.env.VITE_API_KEY}` } }
+          { headers: authHeaders }
         );
 
         if (response.data.success) {
           toast({ title: "Agent Created", description: "Your agent has been created successfully." });
           setCurrentStep(nextStep);
+        } else {
+          throw new Error(response.data?.error || 'Create agent failed');
         }
-      } catch (error: unknown) {
+      } catch (error: any) {
         console.error('Error creating agent:', error);
-        toast({ variant: "destructive", title: "Error", description: error instanceof Error ? error.message : "Failed to create agent. Please try again." });
+        toast({ variant: "destructive", title: "Error", description: error?.response?.data?.error || error.message || "Failed to create agent. Please try again." });
       } finally {
         setIsLoading(false);
       }
@@ -480,7 +505,7 @@ const analytics = new AnalyticsSDK({
                             <WifiOff className="h-4 w-4 text-red-500" />
                           )}
                           <span className="text-sm font-medium">
-                            Agent Status: 
+                            SDK Connection: 
                             <Badge 
                               variant={connectionStatus === 'connected' ? 'default' : 'destructive'} 
                               className="ml-2"
@@ -563,6 +588,14 @@ const analytics = new AnalyticsSDK({
         return null;
     }
   };
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading organizations...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4 sm:px-6 lg:px-8">
