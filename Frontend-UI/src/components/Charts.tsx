@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
 import { apiClient, LLMUsageData } from "@/lib/api";
+import { Button } from "./ui/button";
 
 // Default data structure for fallback
 const defaultPerformanceData = [
@@ -85,11 +86,13 @@ const CustomTooltip = ({ active, payload, label, description }: CustomTooltipPro
 export const PerformanceChart = () => {
   const [hoveredData, setHoveredData] = useState<unknown>(null);
   const [performanceData, setPerformanceData] = useState(defaultPerformanceData);
+  const [hoursWindow, setHoursWindow] = useState<number>(24);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const data = await apiClient.getPerformanceData();
+        const timeframe = `${hoursWindow}h`;
+        const data = await apiClient.getPerformanceData(undefined, { timeframe });
         if (data.length > 0) {
           setPerformanceData(data);
         }
@@ -101,10 +104,22 @@ export const PerformanceChart = () => {
     fetchData();
     const interval = setInterval(fetchData, 30000); // Refresh every 30s
     return () => clearInterval(interval);
-  }, []);
+  }, [hoursWindow]);
+
+  const incWindow = () => setHoursWindow((h) => Math.min(h + 24, 168));
+  const resetWindow = () => setHoursWindow(24);
+
+  const label = hoursWindow <= 24 ? 'Last 24h' : `Last ${Math.ceil(hoursWindow/24)} days`;
 
   return (
     <div className="w-full">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm text-muted-foreground">{label}</div>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={resetWindow}>Reset</Button>
+          <Button variant="default" size="sm" onClick={incWindow} disabled={hoursWindow >= 168}>Expand (+24h)</Button>
+        </div>
+      </div>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={performanceData} onMouseMove={(data) => setHoveredData(data)}>
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
@@ -118,7 +133,7 @@ export const PerformanceChart = () => {
             fontSize={12}
           />
           <Tooltip 
-            content={<CustomTooltip description="Agent performance metrics over 24 hours" />}
+            content={<CustomTooltip description="Agent performance metrics over selected window" />}
             cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 1 }}
           />
           <Legend />
