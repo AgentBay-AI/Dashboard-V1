@@ -1,7 +1,27 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080/api';
+function resolveBaseUrl(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const override = localStorage.getItem('backend_url');
+      if (override && override.startsWith('http')) return override;
+    }
+  } catch {}
+  return (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:8081/api';
+}
+
+const API_BASE_URL = resolveBaseUrl();
 const API_KEY = import.meta.env.VITE_API_KEY;
+
+function resolveApiKey(): string {
+  try {
+    if (typeof window !== 'undefined') {
+      const k = localStorage.getItem('dashboard_api_key');
+      if (k && k.length > 0) return k;
+    }
+  } catch {}
+  return API_KEY || '';
+}
 
 console.log('API Configuration:', {
   API_BASE_URL,
@@ -12,17 +32,25 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_KEY}`,
   },
 });
 
-// Add request interceptor for debugging
+// Add request interceptor for debugging and dynamic auth/header/baseURL refresh
 api.interceptors.request.use((config: any) => {
+  // Refresh baseURL each request to honor runtime override
+  const currentBase = resolveBaseUrl();
+  config.baseURL = currentBase;
+
+  const key = resolveApiKey();
+  if (key) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${key}`;
+  }
   console.log('Making API request:', {
     url: config.url,
     baseURL: config.baseURL,
     headers: {
-      Authorization: config.headers.Authorization ? `${config.headers.Authorization.substring(0, 20)}...` : 'NOT SET'
+      Authorization: config.headers.Authorization ? `${String(config.headers.Authorization).substring(0, 20)}...` : 'NOT SET'
     },
     params: config.params
   });
@@ -169,7 +197,7 @@ export interface Agent {
   name?: string;
   description?: string;
   type?: string;
-  capabilities?: string;
+  capabilities?: string[];
   llm_providers?: string[];
   platform?: string;
   status: string;
@@ -308,17 +336,29 @@ export const apiClient = {
   },
 
   // Performance data
-  getPerformanceData: async (filters?: { organization_id?: string; agent_id?: string }): Promise<PerformanceData[]> => {
+  getPerformanceData: async (
+    filters?: { organization_id?: string; agent_id?: string },
+    opts?: { timeframe?: string }
+  ): Promise<PerformanceData[]> => {
     try {
-      const params = { timeframe: '24h', ...(filters || {}) } as any;
+      const timeframe = opts?.timeframe || '24h';
+      const params = { timeframe, ...(filters || {}) } as any;
       const { data } = await api.get('/dashboard/performance', { params });
       const rows = data?.data || data?.performance_data || [];
-      return (rows as any[]).map((r) => ({
-        time: r.time || (r.timestamp ? new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''),
-        successRate: r.success_rate ?? r.successRate ?? 0,
-        responseTime: r.responseTime ?? (typeof r.latency === 'number' ? r.latency / 1000 : (typeof r.average_latency === 'number' ? r.average_latency / 1000 : 0)),
-        sessions: r.sessions ?? r.requests ?? r.total_requests ?? 0,
-      }));
+      const hours = parseInt(timeframe, 10) || 24;
+      const useDate = hours > 24;
+      return (rows as any[]).map((r) => {
+        const ts = r.timestamp ? new Date(r.timestamp) : undefined;
+        const timeLabel = ts
+          ? (useDate ? ts.toLocaleDateString([], { month: 'short', day: '2-digit' }) : ts.toLocaleTimeString([], { hour: '2-digit' }))
+          : (r.time || '');
+        return {
+          time: timeLabel,
+          successRate: r.success_rate ?? r.successRate ?? 0,
+          responseTime: r.responseTime ?? (typeof r.latency === 'number' ? r.latency / 1000 : (typeof r.average_latency === 'number' ? r.average_latency / 1000 : 0)),
+          sessions: r.sessions ?? r.requests ?? r.total_requests ?? 0,
+        };
+      });
     } catch (error) {
       console.error('Failed to fetch performance data:', error);
       return [];
@@ -497,6 +537,13 @@ export const apiClient = {
     getQuality: async () => {
       const response = await api.get<ApiResponse<any[]>>('/metrics/quality');
       return response.data;
+    }
+  },
+
+  organizations: {
+    create: async (payload: { orgName: string; orgType: string; orgDescription: string; email: string }) => {
+      const { data } = await api.post('/organizations', payload);
+      return data;
     }
   }
 }; 
