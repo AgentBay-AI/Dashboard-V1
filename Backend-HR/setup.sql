@@ -59,6 +59,8 @@ DROP VIEW IF EXISTS view_organization_overview CASCADE;
 DROP VIEW IF EXISTS view_success_rate CASCADE;
 DROP VIEW IF EXISTS view_avg_response_time CASCADE;
 DROP VIEW IF EXISTS view_quality_metrics CASCADE;
+DROP VIEW IF EXISTS view_user_client_map CASCADE;
+DROP VIEW IF EXISTS view_agent_client_keys CASCADE;
 
 DROP TABLE IF EXISTS llm_usage CASCADE;
 DROP TABLE IF EXISTS messages CASCADE;
@@ -75,6 +77,25 @@ DROP TABLE IF EXISTS security_events CASCADE;
 -- api_keys table is preserved as-is
 -- Assuming api_keys already exists with columns:
 --   id, key_hash, client_id, client_name, permissions, rate_limit_per_minute, is_active, created_at, updated_at
+
+-- Track key verification and usage
+ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS verified boolean DEFAULT false;
+ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS verified_at timestamptz;
+ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS last_used_at timestamptz;
+ALTER TABLE IF EXISTS api_keys ADD COLUMN IF NOT EXISTS usage_count integer DEFAULT 0;
+
+-- Ensure profiles table exists for user <-> client mapping
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  full_name VARCHAR(255),
+  client_id VARCHAR(255),
+  clerk_user_id VARCHAR(255),
+  organization_id UUID NULL,
+  role VARCHAR(50) DEFAULT 'user',
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
 
 -- Create organizations table
 CREATE TABLE IF NOT EXISTS organizations (
@@ -129,6 +150,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 CREATE TABLE IF NOT EXISTS messages (
     id BIGSERIAL PRIMARY KEY,
     session_id VARCHAR(255) REFERENCES conversations(session_id) ON DELETE CASCADE,
+    client_id VARCHAR(255) REFERENCES api_keys(client_id),
     timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
     content TEXT NOT NULL,
     role VARCHAR(50) NOT NULL, -- user | assistant | system
@@ -367,6 +389,52 @@ LEFT JOIN (
 LEFT JOIN usage_month m ON m.organization_id = o.id
 LEFT JOIN usage_year y ON y.organization_id = o.id
 LEFT JOIN usage_breakdown b ON b.organization_id = o.id;
+
+-- View: map user email to client_id
+CREATE VIEW view_user_client_map AS
+SELECT p.id AS profile_id, p.email, p.client_id, p.clerk_user_id, p.full_name
+FROM public.profiles p;
+
+-- View: agents with client and any keys under that client (keys listed, not joined to agents by secret!)
+CREATE VIEW view_agent_client_keys AS
+SELECT a.agent_id, a.name, a.organization_id, a.client_id,
+       k.id AS api_key_id, k.client_name, k.is_active, k.permissions, k.created_at
+FROM agents a
+LEFT JOIN api_keys k ON k.client_id = a.client_id;
+
+-- Time-series indexes for performance
+CREATE INDEX IF NOT EXISTS idx_agent_metrics_client_time ON agent_metrics(client_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_metrics_agent_time ON agent_metrics(agent_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_health_client_time ON agent_health(client_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_errors_client_time ON agent_errors(client_id, created_at);
+
+-- Hourly and daily aggregated views for performance metrics
+DROP VIEW IF EXISTS view_agent_metrics_hourly CASCADE;
+DROP VIEW IF EXISTS view_agent_metrics_daily CASCADE;
+
+CREATE VIEW view_agent_metrics_hourly AS
+SELECT 
+  date_trunc('hour', created_at) AS bucket,
+  client_id,
+  agent_id,
+  AVG(success_rate)::int AS success_rate,
+  AVG(average_latency)::int AS average_latency,
+  SUM(total_requests)::int AS total_requests,
+  SUM(total_cost)::numeric(12,6) AS total_cost
+FROM agent_metrics
+GROUP BY 1,2,3;
+
+CREATE VIEW view_agent_metrics_daily AS
+SELECT 
+  date_trunc('day', created_at) AS bucket,
+  client_id,
+  agent_id,
+  AVG(success_rate)::int AS success_rate,
+  AVG(average_latency)::int AS average_latency,
+  SUM(total_requests)::int AS total_requests,
+  SUM(total_cost)::numeric(12,6) AS total_cost
+FROM agent_metrics
+GROUP BY 1,2,3;
 
 -- Optional: seed comment for admin bootstrap (no changes to api_keys here)
 -- INSERT INTO api_keys (...) VALUES (...); 
