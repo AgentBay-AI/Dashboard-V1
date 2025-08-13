@@ -1,77 +1,132 @@
 import { Router, Request, Response } from 'express';
 import { logger } from '../utils/logger';
 import { supabase } from '../lib/supabase';
+import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
-// GET /api/analytics/performance - Performance data from database
-router.get('/performance', async (req: Request, res: Response): Promise<void> => {
+// Apply authentication and require read permission
+router.use(authenticateApiKey);
+
+function toBucket(ts: string, useDaily: boolean): string {
+  const d = new Date(ts);
+  if (useDaily) {
+    d.setHours(0, 0, 0, 0);
+  } else {
+    d.setMinutes(0, 0, 0);
+  }
+  return d.toISOString();
+}
+
+// GET /api/dashboard/performance - Performance data from database
+router.get('/performance', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
   try {
-    const { timeframe, agent_id, organization_id } = req.query as { timeframe?: string; agent_id?: string; organization_id?: string };
-    
-    // Build query for agent metrics
+    const authReq = req as AuthenticatedRequest;
+    const { timeframe = '24h', agent_id, organization_id } = req.query as { timeframe?: string; agent_id?: string; organization_id?: string };
+
+    // Choose hourly view up to 24h, daily beyond
+    const hours = parseInt(String(timeframe), 10) || 24;
+    const useDaily = hours > 24;
+    const view = useDaily ? 'view_agent_metrics_daily' : 'view_agent_metrics_hourly';
+
+    const startDate = new Date();
+    startDate.setHours(startDate.getHours() - hours);
+
+    // Build query using view
     let query = supabase
-      .from('agent_metrics')
-      .select(`
-        *,
-        agents!inner(agent_id, name, status, organization_id)
-      `)
-      .order('created_at', { ascending: false });
+      .from(view)
+      .select('*')
+      .eq('client_id', authReq.clientId)
+      .gte('bucket', startDate.toISOString())
+      .order('bucket', { ascending: true });
 
     if (agent_id) query = query.eq('agent_id', agent_id);
-    if (organization_id) query = query.eq('agents.organization_id', organization_id);
 
-    // Apply timeframe filter
-    if (timeframe) {
-      const now = new Date();
-      let startDate: Date;
-      switch (timeframe) {
-        case '24h': startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000); break;
-        case '7d': startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
-        case '30d': startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); break;
-        default: startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      }
-      query = query.gte('created_at', startDate.toISOString());
+    if (organization_id) {
+      // Filter by agents in org
+      const { data: orgAgents } = await supabase
+        .from('agents')
+        .select('agent_id')
+        .eq('client_id', authReq.clientId)
+        .eq('organization_id', organization_id);
+      const ids = (orgAgents || []).map(a => a.agent_id);
+      if (ids.length > 0) query = query.in('agent_id', ids); else query = query.eq('agent_id', '___none___');
     }
 
-    const { data: metrics, error } = await query.limit(100);
-    if (error) {
-      logger.error('Error fetching performance metrics:', error);
-      res.json({ data: [], average_performance: 0, change: '0%' });
+    let { data: points, error } = await query;
+
+    // Fallback if view missing: aggregate from agent_metrics
+    if (error && (error as any).code === '42P01') {
+      logger.warn('Aggregated views missing, falling back to raw agent_metrics aggregation');
+      let raw = supabase
+        .from('agent_metrics')
+        .select('*')
+        .eq('client_id', authReq.clientId)
+        .gte('created_at', startDate.toISOString())
+        .order('created_at', { ascending: true });
+      if (agent_id) raw = raw.eq('agent_id', agent_id);
+      if (organization_id) {
+        const { data: orgAgents } = await supabase
+          .from('agents')
+          .select('agent_id')
+          .eq('client_id', authReq.clientId)
+          .eq('organization_id', organization_id);
+        const ids = (orgAgents || []).map(a => a.agent_id);
+        if (ids.length > 0) raw = raw.in('agent_id', ids); else raw = raw.eq('agent_id', '___none___');
+      }
+      const { data: metrics, error: err2 } = await raw;
+      if (err2) {
+        logger.error('Raw aggregation fetch failed:', err2);
+        res.json({ data: [] });
+        return;
+      }
+      const buckets: Record<string, { srSum: number; srCount: number; latSum: number; latCount: number; req: number; cost: number; } > = {};
+      (metrics || []).forEach((m: any) => {
+        const b = toBucket(m.created_at, useDaily);
+        if (!buckets[b]) buckets[b] = { srSum: 0, srCount: 0, latSum: 0, latCount: 0, req: 0, cost: 0 };
+        if (typeof m.success_rate === 'number') { buckets[b].srSum += m.success_rate; buckets[b].srCount += 1; }
+        if (typeof m.average_latency === 'number') { buckets[b].latSum += m.average_latency; buckets[b].latCount += 1; }
+        buckets[b].req += Number(m.total_requests || 0);
+        buckets[b].cost += Number(m.total_cost || 0);
+      });
+      const formatted = Object.keys(buckets)
+        .sort()
+        .map(b => ({
+          timestamp: b,
+          success_rate: buckets[b].srCount ? Math.round(buckets[b].srSum / buckets[b].srCount) : 0,
+          latency: buckets[b].latCount ? Math.round(buckets[b].latSum / buckets[b].latCount) : 0,
+          requests: buckets[b].req,
+          cost: Number(buckets[b].cost.toFixed(6))
+        }));
+      res.json({ data: formatted });
       return;
     }
 
-    const avgPerformance = metrics.length > 0 
-      ? metrics.reduce((sum, m) => sum + (m.success_rate || 0), 0) / metrics.length
-      : 0;
+    if (error) {
+      logger.error('Error fetching aggregated performance:', error);
+      res.json({ data: [] });
+      return;
+    }
 
-    const formattedData = metrics.map(metric => ({
-      timestamp: metric.created_at,
-      success_rate: metric.success_rate || 0,
-      latency: metric.average_latency || 0,
-      cost: metric.total_cost || 0,
-      requests: metric.total_requests || 0,
-      agent_name: metric.agents?.name || 'Unknown'
+    const formattedData = (points || []).map((p: any) => ({
+      timestamp: p.bucket,
+      success_rate: p.success_rate || 0,
+      latency: p.average_latency || 0,
+      cost: p.total_cost || 0,
+      requests: p.total_requests || 0,
     }));
 
-    res.json({
-      data: formattedData,
-      average_performance: Math.round(avgPerformance),
-      change: '+0%',
-      total_requests: metrics.reduce((sum, m) => sum + (m.total_requests || 0), 0),
-      total_cost: metrics.reduce((sum, m) => sum + (m.total_cost || 0), 0)
-    });
-
-    logger.info(`Performance analytics fetched: ${metrics.length} records`);
+    res.json({ data: formattedData });
   } catch (error) {
     logger.error('Analytics performance endpoint error:', error);
-    res.json({ data: [], average_performance: 0, change: '0%' });
+    res.json({ data: [] });
   }
 });
 
-// GET /api/analytics/resource-utilization - Resource utilization from health data
-router.get('/resource-utilization', async (req: Request, res: Response): Promise<void> => {
+// GET /api/dashboard/resource-utilization - Resource utilization from health data
+router.get('/resource-utilization', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
   try {
+    const authReq = req as AuthenticatedRequest;
     const { agent_id, organization_id } = req.query as { agent_id?: string; organization_id?: string };
 
     let query = supabase
@@ -80,6 +135,7 @@ router.get('/resource-utilization', async (req: Request, res: Response): Promise
         *,
         agents!inner(agent_id, name, organization_id)
       `)
+      .eq('client_id', authReq.clientId)
       .order('created_at', { ascending: false })
       .limit(50);
 
@@ -130,9 +186,10 @@ router.get('/resource-utilization', async (req: Request, res: Response): Promise
   }
 });
 
-// GET /api/analytics/cost-breakdown - Cost analysis
-router.get('/cost-breakdown', async (req: Request, res: Response): Promise<void> => {
+// GET /api/dashboard/cost-breakdown - Cost analysis
+router.get('/cost-breakdown', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
   try {
+    const authReq = req as AuthenticatedRequest;
     const { agent_id, organization_id } = req.query as { agent_id?: string; organization_id?: string };
 
     let query = supabase
@@ -141,6 +198,7 @@ router.get('/cost-breakdown', async (req: Request, res: Response): Promise<void>
         *,
         agents!inner(agent_id, name, provider, model, organization_id)
       `)
+      .eq('client_id', authReq.clientId)
       .order('created_at', { ascending: false })
       .limit(100);
 
@@ -188,9 +246,10 @@ router.get('/cost-breakdown', async (req: Request, res: Response): Promise<void>
   }
 });
 
-// GET /api/analytics/activity - Recent activity data
-router.get('/activity', async (req: Request, res: Response): Promise<void> => {
+// GET /api/dashboard/activity - Recent activity data
+router.get('/activity', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
   try {
+    const authReq = req as AuthenticatedRequest;
     const { agent_id, organization_id } = req.query as { agent_id?: string; organization_id?: string };
 
     let errorsQuery = supabase
@@ -199,6 +258,7 @@ router.get('/activity', async (req: Request, res: Response): Promise<void> => {
         *,
         agents!inner(agent_id, name, organization_id)
       `)
+      .eq('client_id', authReq.clientId)
       .order('created_at', { ascending: false })
       .limit(20);
 
