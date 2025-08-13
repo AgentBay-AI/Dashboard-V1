@@ -7,8 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowRight, Building2, CheckCircle } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
 import { useToast } from "@/components/ui/use-toast";
+import { apiClient } from "@/lib/api";
 
 type SetupStep = "details" | "success";
 
@@ -28,30 +28,16 @@ const OrganizationSetup = () => {
     if (currentStep === "details") {
       setIsLoading(true);
       try {
-        const response = await axios.post(
-          `${import.meta.env.VITE_BACKEND_URL}/organizations`,
-          setupData,
-          {
-            headers: {
-              Authorization: `Bearer ${import.meta.env.VITE_API_KEY}`
-            }
-          }
-        );
-
-        if (response.data.success) {
+        const response = await apiClient.organizations.create(setupData);
+        if (response.success) {
           setCurrentStep("success");
-          toast({
-            title: "Organization Created",
-            description: "Your organization has been created successfully.",
-          });
+          toast({ title: "Organization Created", description: "Your organization has been created successfully." });
+        } else {
+          throw new Error(response.error || 'Failed to create organization');
         }
       } catch (error: unknown) {
         console.error('Error creating organization:', error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: error instanceof Error ? error.message : "Failed to create organization. Please try again.",
-        });
+        toast({ variant: "destructive", title: "Error", description: error instanceof Error ? error.message : "Failed to create organization. Please try again." });
       } finally {
         setIsLoading(false);
       }
@@ -68,35 +54,18 @@ const OrganizationSetup = () => {
                 <Building2 className="h-8 w-8 text-primary" />
               </div>
               <CardTitle className="text-2xl sm:text-3xl">Create Organization</CardTitle>
-              <CardDescription className="text-base sm:text-lg">
-                Set up your organization to manage AI agents and analytics
-              </CardDescription>
+              <CardDescription className="text-base sm:text-lg">Set up your organization to manage AI agents and analytics</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-6 sm:gap-8">
                 <div className="space-y-3">
                   <Label htmlFor="orgName" className="text-base font-medium">Organization Name</Label>
-                  <Input
-                    id="orgName"
-                    placeholder="Acme Corp"
-                    value={setupData.orgName}
-                    onChange={(e) => setSetupData(prev => ({ ...prev, orgName: e.target.value }))}
-                    className="h-12 text-base"
-                  />
+                  <Input id="orgName" placeholder="Acme Corp" value={setupData.orgName} onChange={(e) => setSetupData(prev => ({ ...prev, orgName: e.target.value }))} className="h-12 text-base" />
                 </div>
-                
                 <div className="space-y-3">
                   <Label htmlFor="email" className="text-base font-medium">Contact Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="admin@acme.com"
-                    value={setupData.email}
-                    onChange={(e) => setSetupData(prev => ({ ...prev, email: e.target.value }))}
-                    className="h-12 text-base"
-                  />
+                  <Input id="email" type="email" placeholder="admin@acme.com" value={setupData.email} onChange={(e) => setSetupData(prev => ({ ...prev, email: e.target.value }))} className="h-12 text-base" />
                 </div>
-                
                 <div className="space-y-3">
                   <Label htmlFor="orgType" className="text-base font-medium">Organization Type</Label>
                   <Select value={setupData.orgType} onValueChange={(value) => setSetupData(prev => ({ ...prev, orgType: value }))}>
@@ -113,26 +82,13 @@ const OrganizationSetup = () => {
                     </SelectContent>
                   </Select>
                 </div>
-                
                 <div className="space-y-3">
                   <Label htmlFor="orgDescription" className="text-base font-medium">Description</Label>
-                  <Textarea
-                    id="orgDescription"
-                    placeholder="Tell us about your organization and how you plan to use AI agents..."
-                    value={setupData.orgDescription}
-                    onChange={(e) => setSetupData(prev => ({ ...prev, orgDescription: e.target.value }))}
-                    className="min-h-24 text-base resize-none"
-                    rows={4}
-                  />
+                  <Textarea id="orgDescription" placeholder="Tell us about your organization and how you plan to use AI agents..." value={setupData.orgDescription} onChange={(e) => setSetupData(prev => ({ ...prev, orgDescription: e.target.value }))} className="min-h-24 text-base resize-none" rows={4} />
                 </div>
               </div>
-              
               <div className="pt-6">
-                <Button 
-                  onClick={handleNext} 
-                  className="w-full h-12 text-base font-semibold"
-                  disabled={!setupData.orgName || !setupData.orgType || !setupData.email || isLoading}
-                >
+                <Button onClick={handleNext} className="w-full h-12 text-base font-semibold" disabled={!setupData.orgName || !setupData.orgType || !setupData.email || isLoading}>
                   Create Organization
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
@@ -140,7 +96,6 @@ const OrganizationSetup = () => {
             </CardContent>
           </Card>
         );
-
       case "success":
         return (
           <Card className="w-full max-w-2xl mx-auto animate-fade-in">
@@ -149,26 +104,14 @@ const OrganizationSetup = () => {
                 <CheckCircle className="h-10 w-10 text-success" />
               </div>
               <h1 className="text-2xl sm:text-3xl font-bold mb-4">Organization Created Successfully!</h1>
-              <p className="text-base sm:text-lg text-muted-foreground mb-8 max-w-md mx-auto">
-                Your organization "{setupData.orgName}" has been set up. Now you can add your first AI agent.
-              </p>
+              <p className="text-base sm:text-lg text-muted-foreground mb-8 max-w-md mx-auto">Your organization "{setupData.orgName}" has been set up. Now you can add your first AI agent.</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center max-w-md mx-auto">
-                <Button asChild className="h-12 text-base font-semibold">
-                  <Link to="/agent-setup">
-                    Add First Agent
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Link>
-                </Button>
-                <Button variant="outline" asChild className="h-12 text-base font-semibold">
-                  <Link to="/dashboard">
-                    View Dashboard
-                  </Link>
-                </Button>
+                <Button asChild className="h-12 text-base font-semibold"><Link to="/agent-setup">Add First Agent<ArrowRight className="ml-2 h-5 w-5" /></Link></Button>
+                <Button variant="outline" asChild className="h-12 text-base font-semibold"><Link to="/dashboard">View Dashboard</Link></Button>
               </div>
             </CardContent>
           </Card>
         );
-
       default:
         return null;
     }
@@ -176,9 +119,7 @@ const OrganizationSetup = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4 sm:px-6 lg:px-8">
-      <div className="w-full max-w-4xl">
-        {renderStep()}
-      </div>
+      <div className="w-full max-w-4xl">{renderStep()}</div>
     </div>
   );
 };
