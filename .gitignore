@@ -47,3 +47,7 @@ service-account-*.json
 .gcloud/
 .aws/
 .azure/
+
+# Documentation files
+filepath.md
+*.md
