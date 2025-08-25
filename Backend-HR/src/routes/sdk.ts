@@ -275,7 +275,7 @@ const postLlmUsage: RequestHandler = async (req: Request, res: Response) => {
 
     let cost = body.cost;
     if ((!cost || cost === 0) && provider && model) {
-      cost = calculateTokenCost(provider, model, body.tokens_input, body.tokens_output);
+      cost = await calculateTokenCost(provider, model, body.tokens_input, body.tokens_output);
     }
 
     const { error } = await supabase.from('llm_usage').insert({

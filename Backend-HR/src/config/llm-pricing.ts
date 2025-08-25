@@ -4,6 +4,8 @@
  * Updated: August 2025
  */
 
+import { recordUnknownModel } from '../services/modelRegistry';
+
 export interface ModelPricing {
   input: number;  // Price per 1K input tokens
   output: number; // Price per 1K output tokens
@@ -71,29 +73,31 @@ export const LLM_PRICING: LLMPricingConfig = {
 /**
  * Calculate cost for token usage
  */
-export function calculateTokenCost(
-  provider: string, 
-  model: string, 
-  inputTokens: number, 
+export async function calculateTokenCost(
+  provider: string,
+  model: string,
+  inputTokens: number,
   outputTokens: number
-): number {
+): Promise<number> {
   const providerKey = provider.toLowerCase();
   const modelKey = model.toLowerCase();
   const providerPricing = LLM_PRICING[providerKey];
   if (!providerPricing) {
     console.warn(`Unknown provider: ${provider}`);
+    await recordUnknownModel(provider, model, inputTokens, outputTokens);
     return 0;
   }
 
   const modelPricing = providerPricing[modelKey];
   if (!modelPricing) {
     console.warn(`Unknown model: ${model} for provider: ${provider}`);
+    await recordUnknownModel(provider, model, inputTokens, outputTokens);
     return 0;
   }
 
   const inputCost = (inputTokens / 1000) * modelPricing.input;
   const outputCost = (outputTokens / 1000) * modelPricing.output;
-  
+
   return inputCost + outputCost;
 }
 

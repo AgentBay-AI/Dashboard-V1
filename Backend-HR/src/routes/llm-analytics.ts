@@ -64,17 +64,17 @@ const getAggregatedUsage: RequestHandler = async (req: Request, res: Response) =
         let total_cost = 0;
         let total_requests = 0;
 
-        (usage || []).forEach((r: any) => {
+        for (const r of usage || []) {
             const provider = r.provider ? String(r.provider).toLowerCase() : 'unknown';
             const model = r.model ? String(r.model).toLowerCase() : 'unknown';
             const input = Number(r.tokens_input) || 0;
             const output = Number(r.tokens_output) || 0;
-            
+
             let computedCost = 0;
             if (r.cost && Number(r.cost) > 0) {
                 computedCost = Number(r.cost);
             } else if (provider && model && provider !== 'unknown' && model !== 'unknown') {
-                const calculatedCost = calculateTokenCost(provider, model, input, output);
+                const calculatedCost = await calculateTokenCost(provider, model, input, output);
                 computedCost = typeof calculatedCost === 'number' && !isNaN(calculatedCost) ? calculatedCost : 0;
             }
 
@@ -92,7 +92,7 @@ const getAggregatedUsage: RequestHandler = async (req: Request, res: Response) =
             total_output_tokens += output;
             total_cost += computedCost;
             total_requests += 1;
-        });
+        }
 
         res.json({
             timeframe: {
@@ -208,7 +208,7 @@ const getTopModels: RequestHandler = async (req: Request, res: Response) => {
         if (error) throw error;
 
         const byModel: Record<string, { provider: string; model: string; input_tokens: number; output_tokens: number; cost: number; request_count: number; }> = {};
-        (usage || []).forEach((r: any) => {
+        for (const r of usage || []) {
             const provider = r.provider ? String(r.provider).toLowerCase() : 'unknown';
             const model = r.model ? String(r.model).toLowerCase() : 'unknown';
             const key = `${provider}::${model}`;
@@ -231,7 +231,7 @@ const getTopModels: RequestHandler = async (req: Request, res: Response) => {
             if (r.cost && Number(r.cost) > 0) {
                 computedCost = Number(r.cost);
             } else if (provider && model && provider !== 'unknown' && model !== 'unknown') {
-                const calculatedCost = calculateTokenCost(provider, model, input, output);
+                const calculatedCost = await calculateTokenCost(provider, model, input, output);
                 computedCost = typeof calculatedCost === 'number' && !isNaN(calculatedCost) ? calculatedCost : 0;
             }
             
@@ -239,7 +239,7 @@ const getTopModels: RequestHandler = async (req: Request, res: Response) => {
             byModel[key].output_tokens += output;
             byModel[key].cost += computedCost;
             byModel[key].request_count += 1;
-        });
+        }
 
         const models = Object.values(byModel)
           .sort((a, b) => sortBy === 'requests' ? b.request_count - a.request_count : b.cost - a.cost)
