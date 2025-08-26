@@ -78,8 +78,3 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
     return res.status(401).json({ error: 'Unauthorized' });
   }
 }
-
-// Provide a combined dashboard-or-api-key middleware to satisfy existing imports
-export function authenticateDashboardOrApiKey(req: Request, res: Response, next: NextFunction) {
-  return authenticateApiKey(req, res, next);
-} 
