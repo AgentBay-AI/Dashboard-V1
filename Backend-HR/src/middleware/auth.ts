@@ -66,10 +66,12 @@ export async function authenticateApiKey(req: Request, res: Response, next: Next
     }
     authReq.apiKeyId = keyRow.id;
 
-    // Optional override of client id for SDK testing
-    const overrideClientId = (req.headers['x-client-id'] as string | undefined)?.trim();
-    if (overrideClientId) {
-      authReq.clientId = overrideClientId;
+    // Optional override of client id for SDK testing (non-production only)
+    if (process.env.NODE_ENV !== 'production') {
+      const overrideClientId = (req.headers['x-client-id'] as string | undefined)?.trim();
+      if (overrideClientId) {
+        authReq.clientId = overrideClientId;
+      }
     }
 
     next();
