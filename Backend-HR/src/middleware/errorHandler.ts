@@ -10,7 +10,7 @@ export const errorHandler = (
   err: CustomError,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ) => {
   const timestamp = new Date().toISOString();
   let statusCode = err.statusCode || 500;
