@@ -29,14 +29,10 @@ export const errorHandler = (
   if (err.name === 'ValidationError') {
     statusCode = 400;
     message = 'Validation Error';
-  }
-
-  if (err.name === 'UnauthorizedError') {
+  } else if (err.name === 'UnauthorizedError') {
     statusCode = 401;
     message = 'Unauthorized';
-  }
-
-  if (err.code === 'ECONNREFUSED') {
+  } else if (err.code === 'ECONNREFUSED') {
     statusCode = 503;
     message = 'Service Unavailable - Database connection failed';
   }
