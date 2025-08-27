@@ -51,3 +51,4 @@ service-account-*.json
 # Documentation files
 filepath.md
 *.md
+*.mdc

@@ -55,7 +55,7 @@ export const errorHandler = (
 
   if (process.env.NODE_ENV !== 'production') {
     response.stack = err.stack;
-    response.details = { code: err.code };
+    response.details = { name: err.name, message: err.message, code: err.code };
   }
 
   res.status(statusCode).json(response);
