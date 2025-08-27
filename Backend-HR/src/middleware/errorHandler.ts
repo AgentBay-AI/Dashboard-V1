@@ -12,6 +12,7 @@ export const errorHandler = (
   res: Response,
   next: NextFunction
 ) => {
+  const timestamp = new Date().toISOString();
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal Server Error';
 
@@ -22,7 +23,7 @@ export const errorHandler = (
     url: req.url,
     method: req.method,
     ip: req.ip,
-    timestamp: new Date().toISOString()
+    timestamp
   });
 
   // Handle specific error types
@@ -45,7 +46,7 @@ export const errorHandler = (
   const response: any = {
     error: message,
     status: statusCode,
-    timestamp: new Date().toISOString()
+    timestamp
   };
 
   if (process.env.NODE_ENV !== 'production') {
