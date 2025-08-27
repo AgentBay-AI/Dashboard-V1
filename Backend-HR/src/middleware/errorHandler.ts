@@ -6,6 +6,14 @@ export interface CustomError extends Error {
   code?: string;
 }
 
+export interface ErrorResponse {
+  error: string;
+  status: number;
+  timestamp: string;
+  stack?: string;
+  details?: CustomError;
+}
+
 export const errorHandler = (
   err: CustomError,
   req: Request,
@@ -42,7 +50,7 @@ export const errorHandler = (
   }
 
   // Don't send stack trace in production
-  const response: any = {
+  const response: ErrorResponse = {
     error: message,
     status: statusCode,
     timestamp: new Date().toISOString()
