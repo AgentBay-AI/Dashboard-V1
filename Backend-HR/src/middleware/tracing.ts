@@ -1,12 +1,21 @@
+
 import { Request, Response, NextFunction } from 'express';
-import { trace, context, propagation, SpanKind } from '@opentelemetry/api';
+import { trace, context, propagation, SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { randomBytes } from 'crypto';
 import { logger } from '../utils/logger';
+
+// Trace context for OpenTelemetry propagation
+export interface TraceContext {
+  traceId: string;
+  spanId: string;
+  traceFlags: number;
+}
 
 // Extend Request interface to include trace information
 export interface TracedRequest extends Request {
   traceId?: string;
   spanId?: string;
-  traceContext?: any;
+  traceContext?: TraceContext;
 }
 
 /**
@@ -15,34 +24,50 @@ export interface TracedRequest extends Request {
  */
 export const traceContextMiddleware = (req: TracedRequest, res: Response, next: NextFunction) => {
   try {
-    // Extract trace context from incoming headers
-    const activeContext = propagation.extract(context.active(), req.headers);
-    
-    // Get current span if available
-    const span = trace.getActiveSpan();
-    
-    if (span) {
-      const spanContext = span.spanContext();
-      req.traceId = spanContext.traceId;
-      req.spanId = spanContext.spanId;
-      req.traceContext = {
-        traceId: spanContext.traceId,
-        spanId: spanContext.spanId,
-        traceFlags: spanContext.traceFlags
-      };
-    }
+    const tracer = trace.getTracer('hr-agent-backend');
 
-    // Set trace headers in response for downstream services
-    if (req.traceId) {
-      res.setHeader('x-trace-id', req.traceId);
-    }
+    // Extract W3C context and start a SERVER span as the canonical request span
+    const extracted = propagation.extract(context.active(), req.headers);
 
-    // Continue with the extracted context
-    context.with(activeContext, () => {
-      next();
+    context.with(extracted, () => {
+      tracer.startActiveSpan(
+        `${req.method} ${req.path}`,
+        {
+          kind: SpanKind.SERVER,
+          attributes: {
+            'http.method': req.method,
+            'http.url': req.url,
+            'http.route': req.route?.path || req.path,
+            'http.target': req.originalUrl || req.url,
+            'net.peer.ip': req.ip,
+            'trace.source': 'backend'
+          }
+        },
+        (span) => {
+          // Correlate response header and request fields with the actual span's trace id
+          const sc = span.spanContext();
+          req.traceId = sc.traceId;
+          req.spanId = sc.spanId;
+          req.traceContext = { traceId: sc.traceId, spanId: sc.spanId, traceFlags: sc.traceFlags };
+          res.setHeader('x-trace-id', sc.traceId);
+
+          // End span when response finishes, and set status based on HTTP code
+          res.on('finish', () => {
+            const status = res.statusCode;
+            if (status >= 500) {
+              span.setStatus({ code: SpanStatusCode.ERROR, message: `HTTP ${status}` });
+            } else {
+              span.setStatus({ code: SpanStatusCode.OK });
+            }
+            span.end();
+          });
+
+          next();
+        }
+      );
     });
   } catch (error) {
-    logger.warn('Failed to extract trace context:', error);
+    logger.warn('Failed to start trace context:', error);
     next();
   }
 };
@@ -54,7 +79,8 @@ export const createSpan = (name: string, req: TracedRequest, operation: () => Pr
   const tracer = trace.getTracer('hr-agent-backend');
   
   return tracer.startActiveSpan(name, {
-    kind: SpanKind.SERVER,
+    // Internal spans for app-level operations
+    kind: SpanKind.INTERNAL,
     attributes: {
       'http.method': req.method,
       'http.url': req.url,
@@ -65,13 +91,10 @@ export const createSpan = (name: string, req: TracedRequest, operation: () => Pr
   }, async (span) => {
     try {
       const result = await operation();
-      span.setStatus({ code: 1 }); // SUCCESS
+      span.setStatus({ code: SpanStatusCode.OK });
       return result;
     } catch (error: any) {
-      span.setStatus({ 
-        code: 2, // ERROR
-        message: error.message 
-      });
+      span.setStatus({ code: SpanStatusCode.ERROR, message: error?.message });
       span.recordException(error);
       throw error;
     } finally {
@@ -83,14 +106,14 @@ export const createSpan = (name: string, req: TracedRequest, operation: () => Pr
 /**
  * Add trace context to any object (for database storage)
  */
-export const addTraceContext = (data: any, req: TracedRequest): any => {
-  if (req.traceId) {
-    return {
-      ...data,
-      trace_id: req.traceId,
-      span_id: req.spanId,
-      trace_context: req.traceContext
-    };
-  }
-  return data;
-}; 
+export const addTraceContext = <T>(
+  data: T,
+  req: TracedRequest
+): T & { trace_id?: string; span_id?: string; trace_context?: TraceContext } => {
+  if (!req.traceId) return data as any;
+
+  const enriched: any = { ...data, trace_id: req.traceId };
+  if (req.spanId) enriched.span_id = req.spanId;
+  if (req.traceContext) enriched.trace_context = req.traceContext;
+  return enriched;
+};
