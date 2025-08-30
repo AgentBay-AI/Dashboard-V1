@@ -1,4 +1,4 @@
-import { Router, Response, Request, RequestHandler } from 'express';
+import { Router, Response, Request, RequestHandler, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 import { z } from 'zod';
 import { validateSchema } from '../middleware/validation';
@@ -19,10 +19,11 @@ const organizationSchema = z.object({
 });
 
 // Create organization
-const createOrganization: RequestHandler = async (req: Request, res: Response) => {
+const createOrganization: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   try {
-    const { orgName, orgType, orgDescription, email } = organizationSchema.parse(req.body);
+    // Body already validated by validateSchema middleware
+    const { orgName, orgType, orgDescription, email } = req.body as z.infer<typeof organizationSchema>;
 
     // Ensure the client's key exists and is active (self-heal if needed)
     try {
@@ -63,12 +64,12 @@ const createOrganization: RequestHandler = async (req: Request, res: Response) =
 
     res.status(201).json({ success: true, data });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    next(error);
   }
 };
 
 // Get organizations for client (overview)
-const getOrganizations: RequestHandler = async (req: Request, res: Response) => {
+const getOrganizations: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   try {
     const { data: organizations, error } = await supabase
@@ -81,7 +82,7 @@ const getOrganizations: RequestHandler = async (req: Request, res: Response) => 
 
     res.json({ success: true, data: organizations });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    next(error);
   }
 };
 
