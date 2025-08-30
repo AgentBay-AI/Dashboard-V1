@@ -8,6 +8,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { logger } from './utils/logger';
+import { errorHandler } from './middleware/errorHandler';
 import agentRoutes from './routes/agent-tracking';
 import apiKeyRoutes from './routes/api-keys';
 import conversationRoutes from './routes/conversations';
@@ -56,14 +57,7 @@ app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Error handling
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    logger.error('Unhandled error:', err);
-    res.status(500).json({
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : 'An unexpected error occurred'
-    });
-});
+app.use(errorHandler);
 
 app.listen(port, () => {
     logger.info(`Server running on port ${port}`);
