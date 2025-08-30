@@ -1,7 +1,6 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import { Router, Request, Response, RequestHandler, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
-import { addTraceContext } from '../middleware/tracing';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -10,7 +9,7 @@ const router = Router();
 router.use(authenticateApiKey);
 
 // Active agents endpoint
-const getActiveAgents: RequestHandler = async (req: Request, res: Response) => {
+const getActiveAgents: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const { organization_id, agent_id } = req.query as { organization_id?: string; agent_id?: string };
@@ -44,12 +43,12 @@ const getActiveAgents: RequestHandler = async (req: Request, res: Response) => {
 
         res.json({ success: true, data: agents || [] });
     } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
 // Operations overview endpoint
-const getOperationsOverview: RequestHandler = async (req: Request, res: Response) => {
+const getOperationsOverview: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const { organization_id, agent_id } = req.query as { organization_id?: string; agent_id?: string };
@@ -108,7 +107,7 @@ const getOperationsOverview: RequestHandler = async (req: Request, res: Response
 
         res.json({ success: true, data: { active_agents: agentsForListing, recent_activity: recentActivity || [] } });
     } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
