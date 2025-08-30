@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
@@ -19,7 +19,7 @@ function toBucket(ts: string, useDaily: boolean): string {
 }
 
 // GET /api/dashboard/performance - Performance data from database
-router.get('/performance', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
+router.get('/performance', requirePermission('read'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authReq = req as AuthenticatedRequest;
     const { timeframe = '24h', agent_id, organization_id } = req.query as { timeframe?: string; agent_id?: string; organization_id?: string };
@@ -119,12 +119,12 @@ router.get('/performance', requirePermission('read'), async (req: Request, res: 
     res.json({ data: formattedData });
   } catch (error) {
     logger.error('Analytics performance endpoint error:', error);
-    res.json({ data: [] });
+    next(error as any);
   }
 });
 
 // GET /api/dashboard/resource-utilization - Resource utilization from health data
-router.get('/resource-utilization', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
+router.get('/resource-utilization', requirePermission('read'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authReq = req as AuthenticatedRequest;
     const { agent_id, organization_id } = req.query as { agent_id?: string; organization_id?: string };
@@ -182,12 +182,12 @@ router.get('/resource-utilization', requirePermission('read'), async (req: Reque
     logger.info(`Resource utilization analytics fetched: ${healthData.length} records`);
   } catch (error) {
     logger.error('Analytics resource utilization endpoint error:', error);
-    res.json({ data: { cpu_usage: 0, memory_usage: 0, response_time: 0, uptime: 0 } });
+    next(error as any);
   }
 });
 
 // GET /api/dashboard/cost-breakdown - Cost analysis
-router.get('/cost-breakdown', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
+router.get('/cost-breakdown', requirePermission('read'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authReq = req as AuthenticatedRequest;
     const { agent_id, organization_id } = req.query as { agent_id?: string; organization_id?: string };
@@ -242,12 +242,12 @@ router.get('/cost-breakdown', requirePermission('read'), async (req: Request, re
     });
   } catch (error) {
     logger.error('Analytics cost breakdown endpoint error:', error);
-    res.json({ total_cost: 0, cost_by_provider: [], cost_by_model: [], daily_costs: [] });
+    next(error as any);
   }
 });
 
 // GET /api/dashboard/activity - Recent activity data
-router.get('/activity', requirePermission('read'), async (req: Request, res: Response): Promise<void> => {
+router.get('/activity', requirePermission('read'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authReq = req as AuthenticatedRequest;
     const { agent_id, organization_id } = req.query as { agent_id?: string; organization_id?: string };
@@ -286,7 +286,7 @@ router.get('/activity', requirePermission('read'), async (req: Request, res: Res
     res.json({ activities, total_count: activities.length });
   } catch (error) {
     logger.error('Analytics activity endpoint error:', error);
-    res.json({ activities: [] });
+    next(error as any);
   }
 });
 
