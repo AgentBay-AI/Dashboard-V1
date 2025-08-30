@@ -97,15 +97,16 @@ const metricsSchema = z.object({
   created_at: z.string().datetime().optional(),
 });
 
-const healthSchema = z.object({
+// Heartbeat schema (uptime v1: validation-only; no DB persistence in this phase)
+const heartbeatSchema = z.object({
   agent_id: z.string().uuid(),
-  status: z.string().default('healthy'),
-  uptime: z.number().int().min(0).max(100).default(100),
-  response_time: z.number().int().nonnegative().default(0),
-  error_rate: z.number().int().min(0).max(100).default(0),
-  cpu_usage: z.number().int().min(0).max(100).default(0),
-  memory_usage: z.number().int().min(0).max(100).default(0),
-  created_at: z.string().datetime().optional(),
+  instance_id: z.string().min(1),
+  status: z.enum(['up','down','starting','stopping','unknown']).default('up'),
+  timestamp: z.string().datetime().optional(),
+  process_start_ts: z.string().datetime().optional(),
+  uptime_ms: z.number().int().nonnegative().optional(),
+  expected_interval_s: z.number().int().min(1).max(3600).optional(),
+  metadata: z.record(z.any()).optional(),
 });
 
 const errorSchema = z.object({
@@ -251,13 +252,14 @@ const getStatus: RequestHandler = async (req: Request, res: Response, next: Next
   const clientId = authReq.clientId || '';
   if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    // Mark key as verified on first successful status call
-    await supabase
-      .from('api_keys')
-      .update({ verified: true, verified_at: new Date().toISOString() })
-      .eq('client_id', clientId)
-      .eq('verified', false)
-      .limit(1);
+    // Mark only the current API key as verified on first successful status call
+    if (authReq.apiKeyId) {
+      await supabase
+        .from('api_keys')
+        .update({ verified: true, verified_at: new Date().toISOString() })
+        .eq('id', authReq.apiKeyId)
+        .eq('verified', false);
+    }
 
     res.json({
       success: true,
@@ -350,35 +352,42 @@ const postMetrics: RequestHandler = async (req: Request, res: Response, next: Ne
   }
 };
 
-// POST /api/sdk/health
-const postHealth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
+// POST /api/sdk/agents/heartbeat
+const postHeartbeat: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
   if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const parsed = healthSchema.safeParse(req.body);
+    const parsed = heartbeatSchema.safeParse(req.body);
     if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
     const body = parsed.data;
+
+    // Optional client cross-check header
+    const hdrClient = (req.headers['x-client-id'] as string | undefined)?.trim();
+    if (hdrClient && hdrClient !== clientId) {
+      return next(httpError(400, 'Client header mismatch for this key'));
+    }
+
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
     if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
-    const { error } = await supabase.from('agent_health').insert({
-      id: crypto.randomUUID(),
-      agent_id: body.agent_id,
-      client_id: clientId,
-      status: body.status,
-      uptime: body.uptime,
-      last_ping: new Date().toISOString(),
-      response_time: body.response_time,
-      error_rate: body.error_rate,
-      cpu_usage: body.cpu_usage,
-      memory_usage: body.memory_usage,
-      created_at: body.created_at || new Date().toISOString(),
+    const serverReceivedAt = new Date().toISOString();
+
+    // No DB writes in this phase. Respond with acceptance and computed fields only.
+    res.json({
+      success: true,
+      data: {
+        client_id: clientId,
+        agent_id: body.agent_id,
+        instance_id: body.instance_id,
+        status: body.status,
+        last_seen: serverReceivedAt,
+        restart_detected: false,
+        message: 'Heartbeat accepted (no DB persistence yet)'
+      }
     });
-    if (error) throw error;
-    res.json({ success: true });
   } catch (err: any) {
-    logger.error('SDK health error:', err);
+    logger.error('SDK heartbeat error:', err);
     next(err);
   }
 };
@@ -496,7 +505,7 @@ router.post('/agents/status', requirePermission('write'), updateAgentStatus);
 router.post('/agents/activity', requirePermission('write'), logAgentActivity);
 router.post('/llm-usage', requirePermission('write'), postLlmUsage);
 router.post('/metrics', requirePermission('write'), postMetrics);
-router.post('/health', requirePermission('write'), postHealth);
+router.post('/agents/heartbeat', requirePermission('write'), postHeartbeat);
 router.post('/error', requirePermission('write'), postError);
 router.post('/conversations/start', requirePermission('write'), postConversationStart);
 router.post('/conversations/end', requirePermission('write'), postConversationEnd);
