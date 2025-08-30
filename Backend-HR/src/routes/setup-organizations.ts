@@ -1,11 +1,11 @@
-import { Router, Response, Request, RequestHandler } from 'express';
+import { Router, Response, Request, RequestHandler, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 import { requirePermission, AuthenticatedRequest } from '../middleware/auth';
 
 const router = Router();
 
 // Temporary setup endpoint - should be removed in production
-const setupOrganizations: RequestHandler = async (req: Request, res: Response) => {
+const setupOrganizations: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   try {
     console.log('🚀 Starting organizations setup...');
@@ -112,11 +112,7 @@ const setupOrganizations: RequestHandler = async (req: Request, res: Response) =
 
   } catch (error: any) {
     console.error('❌ Organizations setup failed:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-      details: error
-    });
+    next(error);
   }
 };
 
