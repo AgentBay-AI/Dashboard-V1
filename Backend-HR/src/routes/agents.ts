@@ -1,4 +1,4 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import { Router, Request, Response, RequestHandler, NextFunction } from 'express';
 import crypto from 'crypto';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
@@ -11,7 +11,7 @@ const router = Router();
 router.use(authenticateApiKey);
 
 // Create agent
-const createAgent: RequestHandler = async (req: Request, res: Response) => {
+const createAgent: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const {
@@ -28,13 +28,14 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
 
         // Validate required fields
         if (!agentName || !agentType) {
-            return res.status(400).json({
-                success: false,
-                error: 'agentName and agentType are required'
-            });
+            const err: any = new Error('agentName and agentType are required');
+            err.statusCode = 400; err.name = 'ValidationError';
+            return next(err);
         }
         if (!organizationId) {
-            return res.status(400).json({ success: false, error: 'organizationId is required' });
+            const err: any = new Error('organizationId is required');
+            err.statusCode = 400; err.name = 'ValidationError';
+            return next(err);
         }
 
         // Verify organization belongs to this client
@@ -45,7 +46,9 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
             .eq('client_id', authReq.clientId)
             .single();
         if (orgError || !org) {
-            return res.status(404).json({ success: false, error: 'Organization not found for this client' });
+            const err: any = new Error('Organization not found for this client');
+            err.statusCode = 404;
+            return next(err);
         }
 
         // Generate unique agent ID
@@ -108,12 +111,12 @@ const createAgent: RequestHandler = async (req: Request, res: Response) => {
             error: error.message,
             clientId: authReq.clientId
         });
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
 // Get agents, optionally filter by organization
-const getAgents: RequestHandler = async (req: Request, res: Response) => {
+const getAgents: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const { organization_id } = req.query as { organization_id?: string };
@@ -140,12 +143,12 @@ const getAgents: RequestHandler = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         logger.error('Error fetching agents:', { error: error.message, clientId: authReq.clientId });
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
 // Delete agent (scoped to client)
-const deleteAgent: RequestHandler = async (req: Request, res: Response) => {
+const deleteAgent: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const { id } = req.params;
@@ -166,7 +169,7 @@ const deleteAgent: RequestHandler = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         logger.error('Error deleting agent:', { error: error.message, agentId: req.params.id, clientId: authReq.clientId });
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
