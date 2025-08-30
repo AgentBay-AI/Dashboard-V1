@@ -1,4 +1,4 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import { Router, Request, Response, RequestHandler, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
@@ -9,7 +9,7 @@ const router = Router();
 router.use(authenticateApiKey);
 
 // Get metrics overview
-const getMetricsOverview: RequestHandler = async (req: Request, res: Response) => {
+const getMetricsOverview: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const { data: metrics, error } = await supabase
@@ -25,10 +25,7 @@ const getMetricsOverview: RequestHandler = async (req: Request, res: Response) =
         res.json(metrics || []);
     } catch (error: any) {
         logger.error('Error fetching metrics:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        next(error);
     }
 };
 
