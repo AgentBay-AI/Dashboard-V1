@@ -1,4 +1,4 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import { Router, Request, Response, RequestHandler, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
@@ -9,7 +9,7 @@ const router = Router();
 router.use(authenticateApiKey);
 
 // Get conversations
-const getConversations: RequestHandler = async (req: Request, res: Response) => {
+const getConversations: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const { data: conversations, error } = await supabase
@@ -27,10 +27,7 @@ const getConversations: RequestHandler = async (req: Request, res: Response) => 
 
     } catch (error: any) {
         logger.error('Error fetching conversations:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        next(error);
     }
 };
 
