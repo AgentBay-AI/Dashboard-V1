@@ -1,4 +1,4 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import { Router, Request, Response, RequestHandler, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
 import { logger } from '../utils/logger';
@@ -27,7 +27,7 @@ const validateTimeframe = (timeframe: string): string => {
 };
 
 // Get aggregated LLM usage
-const getAggregatedUsage: RequestHandler = async (req: Request, res: Response) => {
+const getAggregatedUsage: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const timeframe = validateTimeframe(String(req.query.timeframe || '24h'));
@@ -112,12 +112,12 @@ const getAggregatedUsage: RequestHandler = async (req: Request, res: Response) =
 
     } catch (error: any) {
         logger.error('Error fetching LLM usage:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
 // Get detailed LLM usage with individual records
-const getDetailedUsage: RequestHandler = async (req: Request, res: Response) => {
+const getDetailedUsage: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const timeframe = validateTimeframe(String(req.query.timeframe || '24h'));
@@ -171,12 +171,12 @@ const getDetailedUsage: RequestHandler = async (req: Request, res: Response) => 
 
     } catch (error: any) {
         logger.error('Error fetching detailed LLM usage:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
 // Top models
-const getTopModels: RequestHandler = async (req: Request, res: Response) => {
+const getTopModels: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
         const limit = Math.min(Number(req.query.limit) || 10, 100);
@@ -248,18 +248,18 @@ const getTopModels: RequestHandler = async (req: Request, res: Response) => {
         res.json({ top_models: models });
     } catch (error: any) {
         logger.error('Error fetching top models:', error);
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
 // Pricing info passthrough for UI
-const getPricingInfo: RequestHandler = async (_req: Request, res: Response) => {
+const getPricingInfo: RequestHandler = async (_req: Request, res: Response, next: NextFunction) => {
     try {
         res.json({
           providers: getAvailableProviders().map(p => ({ provider: p, models: getAvailableModels(p) }))
         });
     } catch (error: any) {
-        res.status(500).json({ success: false, error: error.message });
+        next(error);
     }
 };
 
