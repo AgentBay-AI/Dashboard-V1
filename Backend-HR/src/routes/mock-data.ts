@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 
 const router = Router();
 
@@ -120,47 +120,55 @@ router.get('/agents/:id/metrics', (req: Request, res: Response): void => {
 });
 
 // POST /api/mock/log - Store mock data (just log it)
-router.post('/log', (req: Request, res: Response): void => {
-  const { type, data } = req.body;
-  
-  console.log(`📊 Mock ${type} logged:`, data);
-  
-  // Store in mock arrays
-  switch (type) {
-    case 'metrics':
-      mockMetrics.push({ ...data, id: Date.now().toString(), created_at: new Date().toISOString() });
-      break;
-    case 'error':
-      mockErrors.push({ ...data, id: Date.now().toString(), created_at: new Date().toISOString() });
-      break;
-    case 'security':
-    case 'compliance':
-      console.log(`🔒 ${type} event:`, data);
-      break;
-  }
+router.post('/log', (req: Request, res: Response, next: NextFunction): void => {
+  try {
+    const { type, data } = req.body;
 
-  res.status(201).json({
-    success: true,
-    message: `${type} logged successfully (mock)`,
-    timestamp: new Date().toISOString()
-  });
+    console.log(`📊 Mock ${type} logged:`, data);
+
+    // Store in mock arrays
+    switch (type) {
+      case 'metrics':
+        mockMetrics.push({ ...data, id: Date.now().toString(), created_at: new Date().toISOString() });
+        break;
+      case 'error':
+        mockErrors.push({ ...data, id: Date.now().toString(), created_at: new Date().toISOString() });
+        break;
+      case 'security':
+      case 'compliance':
+        console.log(`🔒 ${type} event:`, data);
+        break;
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `${type} logged successfully (mock)`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error as any);
+  }
 });
 
 // POST /api/mock/health - Store mock health data
-router.post('/health', (req: Request, res: Response): void => {
-  console.log('💚 Mock health logged:', req.body);
-  
-  mockHealthData.push({ 
-    ...req.body, 
-    id: Date.now().toString(), 
-    created_at: new Date().toISOString() 
-  });
+router.post('/health', (req: Request, res: Response, next: NextFunction): void => {
+  try {
+    console.log('💚 Mock health logged:', req.body);
 
-  res.status(201).json({
-    success: true,
-    message: 'Health status logged successfully (mock)',
-    timestamp: new Date().toISOString()
-  });
+    mockHealthData.push({ 
+      ...req.body, 
+      id: Date.now().toString(), 
+      created_at: new Date().toISOString() 
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Health status logged successfully (mock)',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    next(error as any);
+  }
 });
 
 // GET /api/mock/stats - Get mock stats
