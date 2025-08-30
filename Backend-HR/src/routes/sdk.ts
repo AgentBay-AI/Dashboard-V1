@@ -1,4 +1,4 @@
-import { Router, Request, Response, RequestHandler } from 'express';
+import { Router, Request, Response, RequestHandler, NextFunction } from 'express';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
@@ -8,6 +8,17 @@ import crypto from 'crypto';
 
 const router = Router();
 router.use(authenticateApiKey);
+
+// Error helper
+function httpError(statusCode: number, message: string, code?: string, details?: any) {
+  const e: any = new Error(message);
+  e.statusCode = statusCode;
+  if (statusCode === 400) e.name = 'ValidationError';
+  if (statusCode === 401) e.name = 'UnauthorizedError';
+  if (code) e.code = code;
+  if (details) e.details = details;
+  return e;
+}
 
 // Helpers
 async function resolveProviderIfMissing(model?: string): Promise<string | undefined> {
@@ -139,12 +150,14 @@ async function assertAgentOwnedByClient(clientId: string, agentId: string): Prom
 }
 
 // SDK: Register agent with auto-generated agent_id
-const registerAgent: RequestHandler = async (req: Request, res: Response) => {
+const registerAgent: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = agentRegisterSchema.parse(req.body);
+    const parsed = agentRegisterSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const organizationId = body.organization_id || await ensureDefaultOrganization(clientId);
 
     // Try to find an existing agent by name for this client+org
@@ -164,19 +177,21 @@ const registerAgent: RequestHandler = async (req: Request, res: Response) => {
     return res.status(404).json({ success: false, error: 'No agent found. Create the agent first, then test connection.', data: { organization_id: organizationId } });
   } catch (err: any) {
     logger.error('SDK register agent error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // SDK: Update agent status
-const updateAgentStatus: RequestHandler = async (req: Request, res: Response) => {
+const updateAgentStatus: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = agentStatusSchema.parse(req.body);
+    const parsed = agentStatusSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return res.status(404).json({ success: false, error: 'Agent not found for this client' });
+    if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
     const { error } = await supabase
       .from('agents')
@@ -197,19 +212,21 @@ const updateAgentStatus: RequestHandler = async (req: Request, res: Response) =>
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK update agent status error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // SDK: Log activity
-const logAgentActivity: RequestHandler = async (req: Request, res: Response) => {
+const logAgentActivity: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = agentActivitySchema.parse(req.body);
+    const parsed = agentActivitySchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return res.status(404).json({ success: false, error: 'Agent not found for this client' });
+    if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
     const { error } = await supabase.from('agent_activity').insert({
       agent_id: body.agent_id,
@@ -224,15 +241,15 @@ const logAgentActivity: RequestHandler = async (req: Request, res: Response) => 
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK agent activity error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // Lightweight ping/status for SDK and UI connection tests
-const getStatus: RequestHandler = async (req: Request, res: Response) => {
+const getStatus: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
     // Mark key as verified on first successful status call
     await supabase
@@ -252,19 +269,21 @@ const getStatus: RequestHandler = async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     logger.error('SDK status error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // POST /api/sdk/llm-usage
-const postLlmUsage: RequestHandler = async (req: Request, res: Response) => {
+const postLlmUsage: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = llmUsageSchema.parse(req.body);
+    const parsed = llmUsageSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return res.status(404).json({ success: false, error: 'Agent not found for this client' });
+    if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
     let provider = body.provider?.toLowerCase();
     const model = body.model?.toLowerCase();
@@ -294,19 +313,21 @@ const postLlmUsage: RequestHandler = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK llm-usage error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // POST /api/sdk/metrics
-const postMetrics: RequestHandler = async (req: Request, res: Response) => {
+const postMetrics: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = metricsSchema.parse(req.body);
+    const parsed = metricsSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return res.status(404).json({ success: false, error: 'Agent not found for this client' });
+    if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
     const { error } = await supabase.from('agent_metrics').insert({
       id: crypto.randomUUID(),
@@ -325,19 +346,21 @@ const postMetrics: RequestHandler = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK metrics error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // POST /api/sdk/health
-const postHealth: RequestHandler = async (req: Request, res: Response) => {
+const postHealth: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = healthSchema.parse(req.body);
+    const parsed = healthSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return res.status(404).json({ success: false, error: 'Agent not found for this client' });
+    if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
     const { error } = await supabase.from('agent_health').insert({
       id: crypto.randomUUID(),
@@ -356,19 +379,21 @@ const postHealth: RequestHandler = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK health error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // POST /api/sdk/error
-const postError: RequestHandler = async (req: Request, res: Response) => {
+const postError: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = errorSchema.parse(req.body);
+    const parsed = errorSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return res.status(404).json({ success: false, error: 'Agent not found for this client' });
+    if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
     const { error } = await supabase.from('agent_errors').insert({
       id: crypto.randomUUID(),
@@ -384,19 +409,21 @@ const postError: RequestHandler = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK error log error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // POST /api/sdk/conversations/start
-const postConversationStart: RequestHandler = async (req: Request, res: Response) => {
+const postConversationStart: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = conversationStartSchema.parse(req.body);
+    const parsed = conversationStartSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return res.status(404).json({ success: false, error: 'Agent not found for this client' });
+    if (!owned) return next(httpError(404, 'Agent not found for this client'));
 
     // Upsert-like behavior: try insert; if exists, ignore
     const { error } = await supabase.from('conversations').insert({
@@ -412,17 +439,19 @@ const postConversationStart: RequestHandler = async (req: Request, res: Response
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK conversation start error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // POST /api/sdk/conversations/end
-const postConversationEnd: RequestHandler = async (req: Request, res: Response) => {
+const postConversationEnd: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = conversationEndSchema.parse(req.body);
+    const parsed = conversationEndSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const { error } = await supabase
       .from('conversations')
       .update({ end_time: body.end_time || new Date().toISOString(), status: body.status })
@@ -432,17 +461,19 @@ const postConversationEnd: RequestHandler = async (req: Request, res: Response) 
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK conversation end error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
 // POST /api/sdk/messages
-const postMessage: RequestHandler = async (req: Request, res: Response) => {
+const postMessage: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
   const authReq = req as AuthenticatedRequest;
   const clientId = authReq.clientId || '';
-  if (!clientId) return res.status(401).json({ success: false, error: 'Missing client' });
+  if (!clientId) return next(httpError(401, 'Missing client'));
   try {
-    const body = messageSchema.parse(req.body);
+    const parsed = messageSchema.safeParse(req.body);
+    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
+    const body = parsed.data;
     const { error } = await supabase.from('messages').insert({
       session_id: body.session_id,
       timestamp: body.timestamp || new Date().toISOString(),
@@ -455,7 +486,7 @@ const postMessage: RequestHandler = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (err: any) {
     logger.error('SDK message error:', err);
-    res.status(400).json({ success: false, error: err.message });
+    next(err);
   }
 };
 
