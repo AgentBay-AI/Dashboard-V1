@@ -1,11 +1,11 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 import { logger } from '../utils/logger';
 
 const router = Router();
 
 // GET /api/frontend/organizations - Get organizations (empty if no DB)
-router.get('/organizations', async (req: Request, res: Response): Promise<void> => {
+router.get('/organizations', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { data: orgs, error } = await supabase
       .from('organizations')
@@ -13,9 +13,7 @@ router.get('/organizations', async (req: Request, res: Response): Promise<void> 
       .order('created_at', { ascending: true });
 
     if (error) {
-      logger.warn('Organizations fetch failed, returning empty data:', error.message);
-      res.json({ organizations: [], source: 'empty' });
-      return;
+      return next(error);
     }
 
     // Transform to frontend format
@@ -34,12 +32,12 @@ router.get('/organizations', async (req: Request, res: Response): Promise<void> 
 
   } catch (error) {
     logger.error('Organizations endpoint error:', error);
-    res.json({ organizations: [], source: 'empty' });
+    next(error as any);
   }
 });
 
 // GET /api/frontend/agents - Get agents (empty if no DB)
-router.get('/agents', async (req: Request, res: Response): Promise<void> => {
+router.get('/agents', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { organization_id } = req.query;
 
@@ -54,13 +52,7 @@ router.get('/agents', async (req: Request, res: Response): Promise<void> => {
     const { data: agents, error } = await query;
 
     if (error) {
-      logger.warn('Agents fetch failed, returning empty data:', error.message);
-      res.json({
-        agents: [],
-        total: 0,
-        source: 'empty'
-      });
-      return;
+      return next(error);
     }
 
     // Transform database format to exact frontend format
@@ -93,11 +85,7 @@ router.get('/agents', async (req: Request, res: Response): Promise<void> => {
 
   } catch (error) {
     logger.error('Frontend agents endpoint error:', error);
-    res.json({
-      agents: [],
-      total: 0,
-      source: 'empty'
-    });
+    next(error as any);
   }
 });
 
