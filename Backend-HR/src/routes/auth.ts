@@ -1,6 +1,5 @@
-import express from 'express';
+import express, { NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { supabase } from '../lib/supabase';
 import { logger } from '../utils/logger';
@@ -25,7 +24,7 @@ async function generateShortClientId(): Promise<string> {
 }
 
 // Diagnostics: check Supabase connectivity and profiles table
-router.get('/diagnose', async (_req, res) => {
+router.get('/diagnose', async (_req, res, next: NextFunction) => {
   try {
     // Check envs presence
     const urlSet = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
@@ -47,7 +46,7 @@ router.get('/diagnose', async (_req, res) => {
     });
   } catch (e: any) {
     logger.error('Diagnostics failed', e);
-    res.status(500).json({ success: false, error: String(e?.message || e) });
+    next(e);
   }
 });
 
@@ -129,7 +128,7 @@ async function findOrCreateUser(email: string, name: string, organizationId?: st
 }
 
 // POST /api/auth/clerk/sync - called from frontend after Clerk sign-in
-router.post('/clerk/sync', async (req, res) => {
+router.post('/clerk/sync', async (req, res, next: NextFunction) => {
   try {
     const { clerk_user_id, email, full_name } = clerkSyncSchema.parse(req.body);
 
@@ -199,12 +198,12 @@ router.post('/clerk/sync', async (req, res) => {
     res.json({ success: true, data: { client_id: user.client_id, user_id: user.id, email: user.email, dashboard_key: rawKey } });
   } catch (error: any) {
     logger.error('Clerk sync failed:', error);
-    res.status(400).json({ success: false, error: error.message, code: error?.code, details: error?.details });
+    next(error);
   }
 });
 
 // POST /api/auth/login - Email/password login
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res, next: NextFunction) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
 
@@ -228,12 +227,12 @@ router.post('/login', async (req, res) => {
     logger.info(`User logged in: ${email}`);
   } catch (error) {
     logger.error('Login failed:', error);
-    res.status(401).json({ error: 'Authentication failed' });
+    next(error as any);
   }
 });
 
 // POST /api/auth/google - Google OAuth login
-router.post('/google', async (req, res) => {
+router.post('/google', async (req, res, next: NextFunction) => {
   try {
     const { token, code } = googleAuthSchema.parse(req.body);
 
@@ -260,23 +259,23 @@ router.post('/google', async (req, res) => {
     logger.info(`Google user logged in: ${demoEmail}`);
   } catch (error) {
     logger.error('Google auth failed:', error);
-    res.status(401).json({ error: 'Google authentication failed' });
+    next(error as any);
   }
 });
 
 // POST /api/auth/logout - Logout
-router.post('/logout', async (req, res) => {
+router.post('/logout', async (req, res, next: NextFunction) => {
   try {
     res.json({ success: true, message: 'Logged out successfully' });
     logger.info('User logged out');
   } catch (error) {
     logger.error('Logout failed:', error);
-    res.status(500).json({ error: 'Logout failed' });
+    next(error as any);
   }
 });
 
 // GET /api/auth/me - Get current user info
-router.get('/me', async (req, res) => {
+router.get('/me', async (req, res, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -293,7 +292,10 @@ router.get('/me', async (req, res) => {
       .single();
 
     if (error || !user) {
-      return res.status(401).json({ error: 'Invalid token' });
+      const e: any = new Error('Invalid token');
+      e.name = 'UnauthorizedError';
+      e.statusCode = 401;
+      return next(e);
     }
 
     res.json({
@@ -307,7 +309,10 @@ router.get('/me', async (req, res) => {
     });
   } catch (error) {
     logger.error('Token verification failed:', error);
-    res.status(401).json({ error: 'Invalid token' });
+    const e: any = new Error('Invalid token');
+    e.name = 'UnauthorizedError';
+    e.statusCode = 401;
+    next(e);
   }
 });
 
