@@ -21,6 +21,7 @@ import { addTraceContext } from './middleware/tracing';
 import { analyticsApiRoutes } from './routes/analytics-api';
 import sdkRouter from './routes/sdk';
 import { authRoutes } from './routes/auth';
+import uptimeRouter from './routes/uptime';
 
 const app = express();
 const port = process.env.PORT || 8081;
@@ -51,6 +52,8 @@ app.use('/api/organizations', organizationsRouter);
 app.use('/api/setup', setupOrgsRouter); // Temporary setup endpoint
 app.use('/api/dashboard', analyticsApiRoutes);
 app.use('/api/sdk', sdkRouter);
+// Dedicated uptime namespace
+app.use('/api/uptime', uptimeRouter);
 
 // Health check
 app.get('/health', (req, res) => {
