@@ -190,7 +190,85 @@ router.get('/resource-utilization', requirePermission('read'), async (req: Reque
 router.get('/cost-breakdown', requirePermission('read'), async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const authReq = req as AuthenticatedRequest;
-    const { agent_id, organization_id } = req.query as { agent_id?: string; organization_id?: string };
+    const { agent_id, organization_id, days: daysParam } = req.query as { agent_id?: string; organization_id?: string; days?: string };
+
+    // Parse lookback window and compute time bounds
+    let days = parseInt(String(daysParam ?? '30'), 10);
+    if (isNaN(days) || days <= 0) days = 30;
+    if (days > 90) days = 90; // basic guardrail
+    const now = new Date();
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - days);
+
+    // Prefer aggregated daily view for larger windows, fallback if not present
+    const useDailyView = days > 30;
+    if (useDailyView) {
+      let vq = supabase
+        .from('view_costs_daily')
+        .select('*')
+        .eq('client_id', authReq.clientId)
+        .gte('bucket', startDate.toISOString())
+        .lte('bucket', now.toISOString())
+        .order('bucket', { ascending: true });
+
+      if (agent_id) vq = vq.eq('agent_id', agent_id);
+      if (organization_id) vq = vq.eq('organization_id', organization_id);
+
+      const { data: viewRows, error: viewErr } = await vq as any;
+
+      if (!viewErr && viewRows) {
+        // Totals
+        const totalCost = viewRows.reduce((sum: number, r: any) => sum + Number(r.total_cost || 0), 0);
+
+        // Breakdowns
+        const costByProvider: Record<string, number> = {};
+        const costByModel: Record<string, number> = {};
+        viewRows.forEach((r: any) => {
+          const provider = r.provider || 'unknown';
+          const model = r.model || 'unknown';
+          const cost = Number(r.total_cost || 0);
+          costByProvider[provider] = (costByProvider[provider] || 0) + cost;
+          costByModel[model] = (costByModel[model] || 0) + cost;
+        });
+        const providerData = Object.entries(costByProvider).map(([provider, cost]) => ({
+          provider,
+          cost: Math.round(cost * 100) / 100,
+          value: Math.round(cost * 100) / 100
+        }));
+        const modelData = Object.entries(costByModel).map(([model, cost]) => ({ model, cost: Math.round(cost * 100) / 100 }));
+
+        // Daily series from view rows with zero-fill
+        const buckets: Record<string, number> = {};
+        (viewRows || []).forEach((r: any) => {
+          const key = toBucket(r.bucket, true);
+          buckets[key] = (buckets[key] || 0) + Number(r.total_cost || 0);
+        });
+        const series: Array<{ timestamp: string; cost: number }> = [];
+        const cur = new Date(startDate);
+        cur.setHours(0, 0, 0, 0);
+        const end = new Date(now);
+        end.setHours(0, 0, 0, 0);
+        while (cur <= end) {
+          const key = toBucket(cur.toISOString(), true);
+          const val = buckets[key] || 0;
+          series.push({ timestamp: key, cost: Math.round(val * 100) / 100 });
+          cur.setDate(cur.getDate() + 1);
+        }
+
+        res.json({
+          total_cost: Math.round(totalCost * 100) / 100,
+          cost_by_provider: providerData,
+          cost_by_model: modelData,
+          daily_costs: series,
+          currency: 'USD'
+        });
+        return;
+      }
+      if (viewErr && (viewErr as any).code !== '42P01') {
+        logger.warn('view_costs_daily query failed, falling back to raw metrics:', viewErr);
+      }
+      // else: missing view (42P01) -> fall through to raw metrics
+    }
 
     let query = supabase
       .from('agent_metrics')
@@ -199,8 +277,9 @@ router.get('/cost-breakdown', requirePermission('read'), async (req: Request, re
         agents!inner(agent_id, name, provider, model, organization_id)
       `)
       .eq('client_id', authReq.clientId)
-      .order('created_at', { ascending: false })
-      .limit(100);
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', now.toISOString())
+      .order('created_at', { ascending: false });
 
     if (agent_id) query = query.eq('agent_id', agent_id);
     if (organization_id) query = query.eq('agents.organization_id', organization_id);
@@ -233,11 +312,54 @@ router.get('/cost-breakdown', requirePermission('read'), async (req: Request, re
     }));
     const modelData = Object.entries(costByModel).map(([model, cost]) => ({ model, cost: Math.round(cost * 100) / 100 }));
 
+    // Daily cost series (last N days window)
+    let dailyQuery = supabase
+      .from('agent_metrics')
+      .select(`
+        created_at,
+        total_cost,
+        agents!inner(organization_id)
+      `)
+      .eq('client_id', authReq.clientId)
+      .gte('created_at', startDate.toISOString())
+      .lte('created_at', now.toISOString())
+      .order('created_at', { ascending: true });
+
+    if (agent_id) dailyQuery = dailyQuery.eq('agent_id', agent_id);
+    if (organization_id) dailyQuery = dailyQuery.eq('agents.organization_id', organization_id);
+
+    const { data: dailyRows, error: dailyErr } = await dailyQuery;
+
+    let daily_costs: Array<{ timestamp: string; cost: number }> = [];
+    if (dailyErr) {
+      logger.error('Error fetching daily cost series:', dailyErr);
+    } else if (dailyRows && dailyRows.length > 0) {
+      const buckets: Record<string, number> = {};
+      dailyRows.forEach((row: any) => {
+        const b = toBucket(row.created_at, true);
+        buckets[b] = (buckets[b] || 0) + Number(row.total_cost || 0);
+      });
+
+      // Zero-fill missing days for a continuous series
+      const series: Array<{ timestamp: string; cost: number }> = [];
+      const cur = new Date(startDate);
+      cur.setHours(0, 0, 0, 0);
+      const end = new Date(now);
+      end.setHours(0, 0, 0, 0);
+      while (cur <= end) {
+        const key = toBucket(cur.toISOString(), true);
+        const val = buckets[key] || 0;
+        series.push({ timestamp: key, cost: Math.round(val * 100) / 100 });
+        cur.setDate(cur.getDate() + 1);
+      }
+      daily_costs = series;
+    }
+
     res.json({
       total_cost: Math.round(totalCost * 100) / 100,
       cost_by_provider: providerData,
       cost_by_model: modelData,
-      daily_costs: [],
+      daily_costs,
       currency: 'USD'
     });
   } catch (error) {
