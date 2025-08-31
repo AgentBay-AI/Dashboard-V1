@@ -33,7 +33,7 @@ async function resolveProviderIfMissing(model?: string): Promise<string | undefi
 }
 
 async function ensureDefaultOrganization(clientId: string): Promise<string> {
-  const { data: org, error } = await supabase
+  const { data: org } = await supabase
     .from('organizations')
     .select('id')
     .eq('client_id', clientId)
@@ -97,17 +97,7 @@ const metricsSchema = z.object({
   created_at: z.string().datetime().optional(),
 });
 
-// Heartbeat schema (uptime v1: validation-only; no DB persistence in this phase)
-const heartbeatSchema = z.object({
-  agent_id: z.string().uuid(),
-  instance_id: z.string().min(1),
-  status: z.enum(['up','down','starting','stopping','unknown']).default('up'),
-  timestamp: z.string().datetime().optional(),
-  process_start_ts: z.string().datetime().optional(),
-  uptime_ms: z.number().int().nonnegative().optional(),
-  expected_interval_s: z.number().int().min(1).max(3600).optional(),
-  metadata: z.record(z.any()).optional(),
-});
+// Heartbeat schema moved to uptime.ts
 
 const errorSchema = z.object({
   agent_id: z.string().uuid(),
@@ -352,45 +342,7 @@ const postMetrics: RequestHandler = async (req: Request, res: Response, next: Ne
   }
 };
 
-// POST /api/sdk/agents/heartbeat
-const postHeartbeat: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
-  const authReq = req as AuthenticatedRequest;
-  const clientId = authReq.clientId || '';
-  if (!clientId) return next(httpError(401, 'Missing client'));
-  try {
-    const parsed = heartbeatSchema.safeParse(req.body);
-    if (!parsed.success) return next(httpError(400, 'Validation Error', 'ZOD_VALIDATION', parsed.error.issues));
-    const body = parsed.data;
-
-    // Optional client cross-check header
-    const hdrClient = (req.headers['x-client-id'] as string | undefined)?.trim();
-    if (hdrClient && hdrClient !== clientId) {
-      return next(httpError(400, 'Client header mismatch for this key'));
-    }
-
-    const owned = await assertAgentOwnedByClient(clientId, body.agent_id);
-    if (!owned) return next(httpError(404, 'Agent not found for this client'));
-
-    const serverReceivedAt = new Date().toISOString();
-
-    // No DB writes in this phase. Respond with acceptance and computed fields only.
-    res.json({
-      success: true,
-      data: {
-        client_id: clientId,
-        agent_id: body.agent_id,
-        instance_id: body.instance_id,
-        status: body.status,
-        last_seen: serverReceivedAt,
-        restart_detected: false,
-        message: 'Heartbeat accepted (no DB persistence yet)'
-      }
-    });
-  } catch (err: any) {
-    logger.error('SDK heartbeat error:', err);
-    next(err);
-  }
-};
+// Heartbeat endpoint moved to uptime.ts
 
 // POST /api/sdk/error
 const postError: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
@@ -505,7 +457,7 @@ router.post('/agents/status', requirePermission('write'), updateAgentStatus);
 router.post('/agents/activity', requirePermission('write'), logAgentActivity);
 router.post('/llm-usage', requirePermission('write'), postLlmUsage);
 router.post('/metrics', requirePermission('write'), postMetrics);
-router.post('/agents/heartbeat', requirePermission('write'), postHeartbeat);
+// Heartbeat route moved to uptime.ts
 router.post('/error', requirePermission('write'), postError);
 router.post('/conversations/start', requirePermission('write'), postConversationStart);
 router.post('/conversations/end', requirePermission('write'), postConversationEnd);
