@@ -1,4 +1,5 @@
 import { Router, Request, Response, RequestHandler, NextFunction } from 'express';
+import { z } from 'zod';
 import crypto from 'crypto';
 import { supabase } from '../lib/supabase';
 import { authenticateApiKey, requirePermission, AuthenticatedRequest } from '../middleware/auth';
@@ -14,6 +15,34 @@ router.use(authenticateApiKey);
 const createAgent: RequestHandler = async (req: Request, res: Response, next: NextFunction) => {
     const authReq = req as AuthenticatedRequest;
     try {
+        const raw = (req.body || {}) as Record<string, any>;
+
+        // Backward-compat for sdk_version -> sdkVersion
+        const normalized = {
+            ...raw,
+            sdkVersion: raw.sdkVersion ?? raw.sdk_version ?? '1.0.0',
+        };
+
+        const createAgentSchema = z.object({
+            agentName: z.string().min(1),
+            agentDescription: z.string().optional(),
+            agentType: z.string().min(1),
+            agentUseCase: z.string().optional(),
+            llmProviders: z.any().optional(),
+            platform: z.string().optional(),
+            organizationId: z.string().uuid(),
+            sdkVersion: z.string().min(1).default('1.0.0'),
+        });
+
+        const parsed = createAgentSchema.safeParse(normalized);
+        if (!parsed.success) {
+            const err: any = new Error('Validation Error');
+            err.statusCode = 400; err.name = 'ValidationError';
+            (err as any).code = 'ZOD_VALIDATION';
+            (err as any).details = parsed.error.issues;
+            return next(err);
+        }
+
         const {
             agentName,
             agentDescription,
@@ -22,21 +51,8 @@ const createAgent: RequestHandler = async (req: Request, res: Response, next: Ne
             llmProviders,
             platform,
             organizationId,
-            status = 'active',
-            sdk_version = '1.0.0'
-        } = req.body;
-
-        // Validate required fields
-        if (!agentName || !agentType) {
-            const err: any = new Error('agentName and agentType are required');
-            err.statusCode = 400; err.name = 'ValidationError';
-            return next(err);
-        }
-        if (!organizationId) {
-            const err: any = new Error('organizationId is required');
-            err.statusCode = 400; err.name = 'ValidationError';
-            return next(err);
-        }
+            sdkVersion,
+        } = parsed.data;
 
         // Verify organization belongs to this client
         const { data: org, error: orgError } = await supabase
@@ -51,6 +67,18 @@ const createAgent: RequestHandler = async (req: Request, res: Response, next: Ne
             return next(err);
         }
 
+        // Prevent duplicates by name within client+org
+        const { data: existing } = await supabase
+            .from('agents')
+            .select('agent_id')
+            .eq('client_id', authReq.clientId)
+            .eq('organization_id', organizationId)
+            .eq('name', agentName)
+            .maybeSingle();
+        if (existing?.agent_id) {
+            return res.status(409).json({ success: false, error: 'Agent name already exists in this organization', data: { agent_id: existing.agent_id } });
+        }
+
         // Generate unique agent ID
         const agentId = crypto.randomUUID();
 
@@ -60,8 +88,7 @@ const createAgent: RequestHandler = async (req: Request, res: Response, next: Ne
             client_id: authReq.clientId,
             organization_id: organizationId,
             registration_time: new Date().toISOString(),
-            status: status,
-            sdk_version: sdk_version,
+            sdk_version: sdkVersion,
             name: agentName,
             description: agentDescription,
             agent_type: agentType,
@@ -124,7 +151,7 @@ const getAgents: RequestHandler = async (req: Request, res: Response, next: Next
 
         let query = supabase
             .from('agents')
-            .select('*')
+            .select('agent_id, organization_id, name, description, agent_type, platform, status, sdk_version, registration_time, metadata, created_at')
             .eq('client_id', authReq.clientId)
             .order('created_at', { ascending: false });
 
@@ -154,18 +181,23 @@ const deleteAgent: RequestHandler = async (req: Request, res: Response, next: Ne
         const { id } = req.params;
         logger.info('Deleting agent:', { agentId: id, clientId: authReq.clientId });
 
-        const { error } = await supabase
+        const { data: deletedRows, error } = await supabase
             .from('agents')
             .delete()
             .eq('agent_id', id)
-            .eq('client_id', authReq.clientId);
+            .eq('client_id', authReq.clientId)
+            .select('agent_id');
 
         if (error) {
             logger.error('Failed to delete agent:', { error: error.message, agentId: id, clientId: authReq.clientId });
             throw error;
         }
 
-        res.json({ success: true, message: 'Agent deleted successfully' });
+        if (!deletedRows || deletedRows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Agent not found' });
+        }
+
+        res.json({ success: true, message: 'Agent deleted successfully', data: { deletedCount: deletedRows.length } });
 
     } catch (error: any) {
         logger.error('Error deleting agent:', { error: error.message, agentId: req.params.id, clientId: authReq.clientId });
