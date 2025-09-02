@@ -22,6 +22,7 @@
   "author": "AI-HR-Agent",
   "license": "MIT",
   "dependencies": {
+    "@clerk/backend": "^2.12.0",
     "@opentelemetry/api": "^1.9.0",
     "@opentelemetry/auto-instrumentations-node": "^0.62.0",
     "@opentelemetry/instrumentation-express": "^0.52.0",
