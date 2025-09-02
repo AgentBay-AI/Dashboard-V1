@@ -121,6 +121,25 @@ function requireAdmin(req: express.Request, res: express.Response, next: NextFun
   next();
 }
 
+// Verify Clerk session token server-side (prod). Uses dynamic require to avoid build-time dependency.
+async function verifyClerkTokenFromRequest(req: express.Request): Promise<any | null> {
+  const tokenHeader = (req.headers['x-clerk-token'] || req.headers['authorization']) as string | undefined;
+  if (!tokenHeader) return null;
+  const token = tokenHeader.startsWith('Bearer ') ? tokenHeader.slice(7) : tokenHeader;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const clerkBackend: any = require('@clerk/backend');
+    const payload = await clerkBackend.verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY,
+      issuer: process.env.CLERK_ISSUER
+    });
+    return payload;
+  } catch (e) {
+    logger.error('Clerk token verification failed:', e);
+    return null;
+  }
+}
+
 // Helper function to find or create user profile
 async function findOrCreateUser(email: string, name: string, organizationId?: string) {
   try {
@@ -175,17 +194,39 @@ async function findOrCreateUser(email: string, name: string, organizationId?: st
 // POST /api/auth/clerk/sync - called from frontend after Clerk sign-in
 router.post('/clerk/sync', async (req, res, next: NextFunction) => {
   try {
-    // In production, require an internal secret for this route to prevent spoofing of clerk_user_id
+    // In production, verify Clerk token server-side and trust claims
+    let clerk_user_id: string | undefined;
+    let email: string | undefined;
+    let full_name: string | undefined = undefined;
+
     if (process.env.NODE_ENV === 'production') {
-      const provided = req.headers['x-internal-auth'];
-      const required = process.env.CLERK_SYNC_SECRET;
-      if (!required || provided !== required) {
-        const err: any = new Error('Forbidden');
-        err.statusCode = 403;
-        throw err;
+      if (!process.env.CLERK_SECRET_KEY) {
+        const e: any = new Error('Clerk not configured');
+        e.statusCode = 500;
+        throw e;
       }
+      const claims = await verifyClerkTokenFromRequest(req);
+      if (!claims) {
+        const e: any = new Error('Unauthorized');
+        e.statusCode = 401;
+        throw e;
+      }
+      clerk_user_id = claims.sub;
+      // Prefer direct email, else try common Clerk claim shapes
+      email = claims.email || claims.email_address || (Array.isArray(claims.email_addresses) ? claims.email_addresses[0]?.email_address : undefined);
+      full_name = claims.name || claims.full_name || undefined;
+      if (!clerk_user_id || !email) {
+        const e: any = new Error('Missing identity claims');
+        e.statusCode = 400;
+        throw e;
+      }
+    } else {
+      // Development: accept provided body (existing behavior)
+      const parsed = clerkSyncSchema.parse(req.body);
+      clerk_user_id = parsed.clerk_user_id;
+      email = parsed.email;
+      full_name = parsed.full_name;
     }
-    const { clerk_user_id, email, full_name } = clerkSyncSchema.parse(req.body);
 
     // Try existing by clerk_user_id first
     let { data: user, error: byClerkErr } = await supabase
@@ -201,7 +242,7 @@ router.post('/clerk/sync', async (req, res, next: NextFunction) => {
       const { data: byEmail, error: byEmailErr } = await supabase
         .from('profiles')
         .select('*')
-        .eq('email', email)
+        .eq('email', email as string)
         .maybeSingle();
 
       if (byEmailErr) logger.error('Supabase select by email error:', byEmailErr);
@@ -222,7 +263,7 @@ router.post('/clerk/sync', async (req, res, next: NextFunction) => {
         const clientId = await generateShortClientId();
         const { data: created, error: insErr } = await supabase
           .from('profiles')
-          .insert({ email, full_name: full_name || email.split('@')[0], role: 'user', client_id: clientId, clerk_user_id })
+          .insert({ email, full_name: full_name || (email as string).split('@')[0], role: 'user', client_id: clientId, clerk_user_id })
           .select('*')
           .single();
         if (insErr) {
