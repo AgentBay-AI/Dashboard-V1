@@ -123,7 +123,7 @@ function requireAdmin(req: express.Request, res: express.Response, next: NextFun
 
 // Verify Clerk session token server-side (prod). Uses dynamic require to avoid build-time dependency.
 async function verifyClerkTokenFromRequest(req: express.Request): Promise<any | null> {
-  const tokenHeader = (req.headers['x-clerk-token'] || req.headers['authorization']) as string | undefined;
+  const tokenHeader = (req.headers['x-clerk-token'] || req.headers['authorization'] || req.headers['clerk-authorization']) as string | undefined;
   if (!tokenHeader) return null;
   const token = tokenHeader.startsWith('Bearer ') ? tokenHeader.slice(7) : tokenHeader;
   try {
@@ -194,38 +194,26 @@ async function findOrCreateUser(email: string, name: string, organizationId?: st
 // POST /api/auth/clerk/sync - called from frontend after Clerk sign-in
 router.post('/clerk/sync', async (req, res, next: NextFunction) => {
   try {
-    // In production, verify Clerk token server-side and trust claims
-    let clerk_user_id: string | undefined;
-    let email: string | undefined;
-    let full_name: string | undefined = undefined;
-
-    if (process.env.NODE_ENV === 'production') {
-      if (!process.env.CLERK_SECRET_KEY) {
-        const e: any = new Error('Clerk not configured');
-        e.statusCode = 500;
-        throw e;
-      }
-      const claims = await verifyClerkTokenFromRequest(req);
-      if (!claims) {
-        const e: any = new Error('Unauthorized');
-        e.statusCode = 401;
-        throw e;
-      }
-      clerk_user_id = claims.sub;
-      // Prefer direct email, else try common Clerk claim shapes
-      email = claims.email || claims.email_address || (Array.isArray(claims.email_addresses) ? claims.email_addresses[0]?.email_address : undefined);
-      full_name = claims.name || claims.full_name || undefined;
-      if (!clerk_user_id || !email) {
-        const e: any = new Error('Missing identity claims');
-        e.statusCode = 400;
-        throw e;
-      }
-    } else {
-      // Development: accept provided body (existing behavior)
-      const parsed = clerkSyncSchema.parse(req.body);
-      clerk_user_id = parsed.clerk_user_id;
-      email = parsed.email;
-      full_name = parsed.full_name;
+    // Verify Clerk token server-side in all environments; require configuration
+    if (!process.env.CLERK_SECRET_KEY) {
+      const e: any = new Error('Clerk not configured');
+      e.statusCode = 500;
+      throw e;
+    }
+    const claims = await verifyClerkTokenFromRequest(req);
+    if (!claims) {
+      const e: any = new Error('Unauthorized');
+      e.statusCode = 401;
+      throw e;
+    }
+    const clerk_user_id: string | undefined = claims.sub;
+    // Prefer direct email, else try common Clerk claim shapes
+    const email: string | undefined = claims.email || claims.email_address || (Array.isArray(claims.email_addresses) ? claims.email_addresses[0]?.email_address : undefined);
+    const full_name: string | undefined = claims.name || claims.full_name || undefined;
+    if (!clerk_user_id || !email) {
+      const e: any = new Error('Missing identity claims');
+      e.statusCode = 400;
+      throw e;
     }
 
     // Try existing by clerk_user_id first
@@ -480,6 +468,108 @@ router.post('/test-connection', async (req, res, next: NextFunction) => {
 });
 
 export { router as authRoutes };
+
+// POST /api/auth/webhooks/clerk - Clerk webhook (Svix verification)
+// Note: For production, configure your server to provide a raw body on this route
+// (e.g., app.use('/api/auth/webhooks/clerk', express.raw({ type: 'application/json' }))).
+router.post('/webhooks/clerk', async (req, res) => {
+  try {
+    const secret = process.env.CLERK_WEBHOOK_SECRET;
+    if (!secret) {
+      return res.status(500).json({ error: 'CLERK_WEBHOOK_SECRET not set' });
+    }
+
+    let Webhook: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      Webhook = require('svix').Webhook;
+    } catch {
+      return res.status(500).json({ error: 'svix not installed. Run: pnpm add svix' });
+    }
+
+    const svix_id = req.headers['svix-id'] as string | undefined;
+    const svix_timestamp = req.headers['svix-timestamp'] as string | undefined;
+    const svix_signature = req.headers['svix-signature'] as string | undefined;
+    if (!svix_id || !svix_timestamp || !svix_signature) {
+      return res.status(400).json({ error: 'Missing Svix headers' });
+    }
+
+    const payloadRaw = (req as any).rawBody ? (req as any).rawBody.toString('utf8') : JSON.stringify(req.body || {});
+    const wh = new Webhook(secret);
+    let event: any;
+    try {
+      event = wh.verify(payloadRaw, {
+        'svix-id': svix_id,
+        'svix-timestamp': svix_timestamp,
+        'svix-signature': svix_signature
+      });
+    } catch (e) {
+      logger.error('Svix verification failed:', e);
+      return res.status(400).json({ error: 'Invalid signature' });
+    }
+
+    const type = event?.type as string | undefined;
+    const data = event?.data as any;
+
+    if (!type || !data) {
+      return res.status(400).json({ error: 'Invalid event' });
+    }
+
+    if (type === 'user.created' || type === 'user.updated') {
+      const clerk_user_id = data.id as string;
+      // Prefer primary email
+      let email: string | undefined;
+      const primaryEmailId = data.primary_email_address_id as string | undefined;
+      if (Array.isArray(data.email_addresses)) {
+        const primary = data.email_addresses.find((e: any) => e.id === primaryEmailId) || data.email_addresses[0];
+        email = primary?.email_address;
+      }
+      const full_name = [data.first_name, data.last_name].filter(Boolean).join(' ').trim() || data.username || undefined;
+
+      if (clerk_user_id && email) {
+        // Upsert profile similar to /clerk/sync
+        let { data: user } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('clerk_user_id', clerk_user_id)
+          .maybeSingle();
+
+        if (!user) {
+          const { data: byEmail } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('email', email)
+            .maybeSingle();
+
+          if (byEmail) {
+            const clientId = byEmail.client_id || await generateShortClientId();
+            const { data: updated } = await supabase
+              .from('profiles')
+              .update({ clerk_user_id, client_id: clientId, full_name: full_name || byEmail.full_name })
+              .eq('id', byEmail.id)
+              .select('*')
+              .single();
+            user = updated!;
+          } else {
+            const clientId = await generateShortClientId();
+            const { data: created } = await supabase
+              .from('profiles')
+              .insert({ email, full_name: full_name || (email as string).split('@')[0], role: 'user', client_id: clientId, clerk_user_id })
+              .select('*')
+              .single();
+            user = created!;
+          }
+        }
+      }
+    }
+
+    // You can also handle 'session.created' etc. as needed
+    return res.json({ success: true });
+  } catch (e) {
+    logger.error('Clerk webhook failed:', e);
+    return res.status(500).json({ error: 'Webhook handler error' });
+  }
+});
 
 // POST /api/auth/rotate-key - Rotate API key on explicit user/admin request
 router.post('/rotate-key', requireAuth, async (req, res, next: NextFunction) => {
