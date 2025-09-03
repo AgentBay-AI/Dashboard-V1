@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@clerk/clerk-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,28 +53,34 @@ const Dashboard = () => {
   });
 
   const [ready, setReady] = useState(false);
+  const [authHeaders, setAuthHeaders] = useState<Record<string, string>>({});
 
-  // Wait for client sync (api key + backend url) before any calls
+  // Prepare JWT auth header (Clerk) and ensure backend URL exists
+  const { getToken, isSignedIn } = useAuth();
   useEffect(() => {
     let cancelled = false;
-    function checkReady() {
+    (async () => {
       try {
-        const key = localStorage.getItem('dashboard_api_key');
-        const base = localStorage.getItem('backend_url');
-        if (key && base) {
-          if (!cancelled) setReady(true);
-          return;
+        if (!isSignedIn) return;
+        const template = (import.meta.env.VITE_CLERK_JWT_TEMPLATE as string | undefined) || 'backend';
+        const token = await getToken({ template });
+        const base = localStorage.getItem('backend_url') || (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:8081/api';
+        if (token && base) {
+          if (!localStorage.getItem('backend_url')) localStorage.setItem('backend_url', base);
+          if (!cancelled) {
+            setAuthHeaders({ Authorization: `Bearer ${token}` });
+            setReady(true);
+          }
         }
-      } catch {}
-      setTimeout(checkReady, 250);
-    }
-    checkReady();
+      } catch (e) {
+        console.warn('Failed to obtain JWT for dashboard', e);
+      }
+    })();
     return () => { cancelled = true; };
-  }, []);
+  }, [getToken, isSignedIn]);
 
-  const apiKey = (() => { try { return localStorage.getItem('dashboard_api_key') || '' } catch { return '' }})();
   const baseURL = (() => { try { return localStorage.getItem('backend_url') || (import.meta.env.VITE_BACKEND_URL as string) } catch { return import.meta.env.VITE_BACKEND_URL as string } })();
-  const headers = { Authorization: `Bearer ${apiKey}` };
+  const headers = authHeaders;
 
   useEffect(() => {
     if (!ready) return;
