@@ -12,6 +12,7 @@ function resolveBaseUrl(): string {
 
 const API_BASE_URL = resolveBaseUrl();
 const API_KEY = import.meta.env.VITE_API_KEY;
+const BOOTSTRAP_TOKEN_ENV = (import.meta.env.VITE_BOOTSTRAP_TOKEN as string | undefined) || '';
 
 function resolveApiKey(): string {
   try {
@@ -21,6 +22,16 @@ function resolveApiKey(): string {
     }
   } catch {}
   return API_KEY || '';
+}
+
+function resolveBootstrapToken(): string | undefined {
+  try {
+    if (typeof window !== 'undefined') {
+      const t = localStorage.getItem('bootstrap_token');
+      if (t && t.length > 0) return t;
+    }
+  } catch {}
+  return BOOTSTRAP_TOKEN_ENV || undefined;
 }
 
 console.log('API Configuration:', {
@@ -537,6 +548,22 @@ export const apiClient = {
     getQuality: async () => {
       const response = await api.get<ApiResponse<any[]>>('/metrics/quality');
       return response.data;
+    }
+  },
+
+  setup: {
+    bootstrap: async (payload: { email: string; orgName?: string; orgType?: string; orgDescription?: string }) => {
+      const token = resolveBootstrapToken();
+      const { data } = await api.post('/setup/bootstrap', payload, token ? { headers: { 'x-bootstrap-token': token } } : undefined);
+      return data;
+    }
+  },
+  // First-run simple organization creation (no API key required)
+  setupOrg: {
+    create: async (payload: { email: string; orgName: string; orgType: string; orgDescription?: string }) => {
+      const token = resolveBootstrapToken();
+      const { data } = await api.post('/setup/organization', payload, token ? { headers: { 'x-bootstrap-token': token } } : undefined);
+      return data;
     }
   },
 
