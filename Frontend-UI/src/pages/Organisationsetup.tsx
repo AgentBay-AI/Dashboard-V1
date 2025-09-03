@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowRight, Building2, CheckCircle } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import axios from 'axios';
+import { useAuth } from "@clerk/clerk-react";
 import { useToast } from "@/components/ui/use-toast";
 import { apiClient } from "@/lib/api";
 
@@ -24,17 +26,52 @@ const OrganizationSetup = () => {
     email: "",
   });
 
+  const { getToken, isSignedIn } = useAuth();
+
   const handleNext = async () => {
     if (currentStep === "details") {
       setIsLoading(true);
       try {
-        const response = await apiClient.organizations.create(setupData);
-        if (response.success) {
-          setCurrentStep("success");
-          toast({ title: "Organization Created", description: "Your organization has been created successfully." });
-        } else {
-          throw new Error(response.error || 'Failed to create organization');
+        // Prefer JWT-authenticated org creation so it binds to the user's client_id
+        let response: any = null;
+        try {
+          const template = (import.meta.env.VITE_CLERK_JWT_TEMPLATE as string | undefined) || 'backend';
+          const token = isSignedIn ? await getToken({ template }) : undefined;
+          const baseURL = (localStorage.getItem('backend_url') || (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:8081/api');
+          if (token) {
+            const { data } = await axios.post(`${baseURL}/setup/organization`, {
+              email: setupData.email,
+              orgName: setupData.orgName,
+              orgType: setupData.orgType,
+              orgDescription: setupData.orgDescription,
+            }, { headers: { Authorization: `Bearer ${token}` } });
+            response = data;
+          }
+        } catch {}
+
+        // Fallback without JWT (dev/non-auth flows)
+        if (!response) {
+          response = await apiClient.setupOrg.create({
+            email: setupData.email,
+            orgName: setupData.orgName,
+            orgType: setupData.orgType,
+            orgDescription: setupData.orgDescription,
+          });
         }
+        if (!response?.success) throw new Error(response?.error || 'Failed to create organization');
+        const organization = response?.data?.organization;
+        const clientId = response?.data?.client_id;
+        if (clientId) localStorage.setItem('client_id', clientId);
+        // Ensure backend_url is set so the dashboard can proceed
+        try {
+          const existingBase = localStorage.getItem('backend_url');
+          if (!existingBase) {
+            const envBase = (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:8081/api';
+            localStorage.setItem('backend_url', envBase);
+          }
+        } catch {}
+        setCurrentStep("success");
+        toast({ title: "Organization Created", description: "Your organization has been created successfully." });
       } catch (error: unknown) {
         console.error('Error creating organization:', error);
         toast({ variant: "destructive", title: "Error", description: error instanceof Error ? error.message : "Failed to create organization. Please try again." });
