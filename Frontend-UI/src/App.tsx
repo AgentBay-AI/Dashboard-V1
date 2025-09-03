@@ -19,7 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 const queryClient = new QueryClient();
 
 function ClerkSync() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, getToken } = useAuth();
   const { user } = useUser();
 
   useEffect(() => {
@@ -32,7 +32,15 @@ function ClerkSync() {
         const full_name = user.fullName || user.firstName || '';
         const clerk_user_id = user.id;
         const baseURL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:8081/api';
-        const res = await axios.post(`${baseURL}/auth/clerk/sync`, { clerk_user_id, email, full_name });
+        // Request a token from the custom Clerk JWT template (default 'backend')
+        const template = (import.meta.env.VITE_CLERK_JWT_TEMPLATE as string | undefined) || 'backend';
+        const token = await getToken({ template });
+        if (!token) return;
+        const res = await axios.post(
+          `${baseURL}/auth/clerk/sync`,
+          { clerk_user_id, email, full_name },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
         if (cancelled) return;
         const data = res.data?.data || {};
         if (data.client_id) localStorage.setItem('client_id', data.client_id);
@@ -45,7 +53,7 @@ function ClerkSync() {
       }
     })();
     return () => { cancelled = true; };
-  }, [isSignedIn, user?.id]);
+  }, [isSignedIn, user?.id, getToken]);
 
   return null;
 }
