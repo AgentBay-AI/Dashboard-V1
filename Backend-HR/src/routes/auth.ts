@@ -262,38 +262,10 @@ router.post('/clerk/sync', async (req, res, next: NextFunction) => {
       }
     }
 
-    // Ensure a dashboard API key exists; avoid auto-rotation
-    let dashboard_key: string | null = null;
-    const { data: existingKey, error: keySelErr } = await supabase
-      .from('api_keys')
-      .select('*')
-      .eq('client_id', user.client_id)
-      .maybeSingle();
-    if (keySelErr) logger.error('Supabase select api_key error:', keySelErr);
-
-    if (!existingKey) {
-      const rawKey = `sk-${crypto.randomBytes(32).toString('hex')}`;
-      const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
-      const { error: insKeyErr } = await supabase
-        .from('api_keys')
-        .insert({
-          client_id: user.client_id,
-          key_hash: keyHash,
-          client_name: `${user.full_name || 'User'} Dashboard`,
-          permissions: JSON.stringify(["read","write","sdk"]),
-          rate_limit_per_minute: 600,
-          is_active: true,
-          verified: true,
-          verified_at: new Date().toISOString()
-        });
-      if (insKeyErr) logger.error('Supabase insert api_key error:', insKeyErr);
-      else dashboard_key = rawKey;
-    }
-
     // Issue access + refresh tokens for dashboard session
     const { access_token, refresh_token } = await issueTokens({ id: user.id, email: user.email, client_id: user.client_id });
 
-    res.json({ success: true, data: { client_id: user.client_id, user_id: user.id, email: user.email, dashboard_key, access_token, refresh_token } });
+    res.json({ success: true, data: { client_id: user.client_id, user_id: user.id, email: user.email, access_token, refresh_token } });
   } catch (error: any) {
     logger.error('Clerk sync failed:', error);
     next(error);
